@@ -40,9 +40,13 @@ target_in = model.normalize_3d_volume(target_in)
 context_in = model.normalize_3d_volume(context_in)
 context_out = model.normalize_3d_volume(context_out)
 
-# Inference (lower forward_l_arg if GPU memory is limited, min=1)
+# Inference
 with torch.no_grad():
-    mask = model.autoregressive_inference(target_in, context_in, context_out, forward_l_arg=1)
+    mask = model.autoregressive_inference(target_in,
+                                          context_in,
+                                          context_out,
+                                          forward_l_arg=1, # min-context size. Lower if GPU memory is limited, min=1.
+                                         )
 ```
 
 ## Acknowledgements
