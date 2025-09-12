@@ -52,5 +52,5 @@ with torch.no_grad():
 ```
 
 ## Acknowledgements
-This repository is modified from [Neuroverse3D](https://github.com/jiesihu/Neuroverse3D).
+This repository was modified from [Neuroverse3D](https://github.com/jiesihu/Neuroverse3D).
 
