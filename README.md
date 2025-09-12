@@ -17,9 +17,9 @@ Make sure you have Python and PyTorch installed. All required libraries are list
 pip install -r requirements.txt
 ```
 
-### 2. 🖥️ Usage
+### 2. Usage
 
-#### Load a Pretrained Model
+#### Load the Pretrained Model
 Download the model weight [here](https://drive.google.com/file/d/1pycz24JidkOspz2qyUsC1xjfEPBSfQsK/view?usp=sharing).
 ```python
 import torch
