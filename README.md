@@ -3,7 +3,7 @@
 
 Official PyTorch implementation of **Medverse: A Universal Model for Full-Resolution 3D Medical Image Segmentation, Transformation and Enhancement**  
 
-[Paper]((https://arxiv.org/abs/2509.09232).
+[Paper](https://arxiv.org/abs/2509.09232).
 
 
 
