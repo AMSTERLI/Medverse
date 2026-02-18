@@ -563,6 +563,7 @@ class LightningModel(pl.LightningModule):
         return model_image_context_in
 
     def _pad_the_image(self, original_spatial_shape_tuple, level, target_in, context_in, context_out):
+        D_orig, H_orig, W_orig = original_spatial_shape_tuple
         padding_applied = False
         # Calculate padded shape for the highest resolution if multi-level processing is needed
         # This ensures that dimensions are cleanly divisible in all downsampling steps.
