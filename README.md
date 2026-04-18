@@ -12,7 +12,7 @@ Official PyTorch implementation of **Medverse: A Universal Model for Full-Resolu
 ### 1. Environment Setup
 
 * **Option 1: Using uv (Recommended)**
-    This project uses `pyproject.toml` for dependency management. You can set up the environment instantly using [uv](https://github.com/astral-sh/uv):
+    This project uses  [uv](https://github.com/astral-sh/uv) for dependency management. :
     ```bash
     # Install uv
     pip install uv
@@ -25,7 +25,7 @@ Official PyTorch implementation of **Medverse: A Universal Model for Full-Resolu
     ```
 
 * **Option 2: Using pip**
-    Ensure you have Python and PyTorch installed. You can install the dependencies listed in `requirements.txt`:
+    You can also install the dependencies listed in `requirements.txt`:
     ```bash
     pip install -r requirements.txt
     ```
