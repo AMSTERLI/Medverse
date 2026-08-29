@@ -193,7 +193,8 @@ def main() -> None:
                 "train_episodes": len(train_dataset),
                 "val_episodes": len(val_dataset),
                 "device": str(device),
-                "ccti_mode": args.ccti_mode,
+                "use_ccti": not args.disable_ccti,
+                "ccti_mode": args.ccti_mode if not args.disable_ccti else "disabled",
                 "channels": channels,
             }
         )
