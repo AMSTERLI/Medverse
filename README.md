@@ -75,3 +75,7 @@ The channel ablation modes (`none`, `all`, `random`, `learned`) and the default
 MVP settings are documented in `configs/pan_cancer_ccti_mvp.yaml`.  Run
 `python scripts/smoke_test_ccti.py` for a small standalone check.
 
+PAOT2 CT pair lists can be converted into organ-aware binary ICL episodes with
+`scripts/prepare_paot2_manifest.py`.  The complete organ/label mapping and the
+minimal train/evaluate commands are documented in `docs/paot2_training.md`.
+

@@ -41,7 +41,8 @@ class Medverse(nn.Module):
                     unet_block_cls_c2t = ConvBlock_context_c2t,
                     kwargs = {'conv_layers_per_stage':conv_layers_per_stage},
                     patch_num = patch_num,
-                    attention_dim = hidden_size)
+                    attention_dim = hidden_size,
+                    image_size = img_size)
         
         self.target_encoder = TargetEncoder(in_channels = in_channels, 
                     out_channels = out_channels, 
@@ -61,6 +62,7 @@ class Medverse(nn.Module):
                                     kwargs = {'conv_layers_per_stage':conv_layers_per_stage},
                                     patch_num = patch_num,
                                     attention_dim = hidden_size,
+                                    image_size = img_size,
                                     use_ccti=use_ccti,
                                     ccti_mode=ccti_mode,
                                     ccti_channel_ratio=ccti_channel_ratio,

@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "description": "PAOT2 CT binary-tumor task mapping used by the Medverse ICL MVP.",
+  "rules": [
+    {
+      "path_prefix": "04_LiTS/",
+      "source_dataset": "LiTS",
+      "primary_organ": "liver",
+      "target_region": "liver_tumor",
+      "cancer_type": "liver_tumor",
+      "tumor_label_values": [2]
+    },
+    {
+      "path_prefix": "05_KiTS/",
+      "source_dataset": "KiTS",
+      "primary_organ": "kidney",
+      "target_region": "kidney_tumor",
+      "cancer_type": "kidney_tumor",
+      "tumor_label_values": [2]
+    },
+    {
+      "path_prefix": "10_Decathlon/Task03_Liver/",
+      "source_dataset": "MSD_Task03_Liver",
+      "primary_organ": "liver",
+      "target_region": "liver_tumor",
+      "cancer_type": "liver_tumor",
+      "tumor_label_values": [2]
+    },
+    {
+      "path_prefix": "10_Decathlon/Task06_Lung/",
+      "source_dataset": "MSD_Task06_Lung",
+      "primary_organ": "lung",
+      "target_region": "lung_tumor",
+      "cancer_type": "lung_tumor",
+      "tumor_label_values": [1]
+    },
+    {
+      "path_prefix": "10_Decathlon/Task07_Pancreas/",
+      "source_dataset": "MSD_Task07_Pancreas_or_PanTS",
+      "primary_organ": "pancreas",
+      "target_region": "pancreatic_tumor",
+      "cancer_type": "pancreatic_tumor",
+      "tumor_label_values": [2]
+    },
+    {
+      "path_prefix": "10_Decathlon/Task08_HepaticVessel/",
+      "source_dataset": "MSD_Task08_HepaticVessel",
+      "primary_organ": "liver",
+      "target_region": "liver_tumor",
+      "cancer_type": "liver_tumor",
+      "tumor_label_values": [2]
+    },
+    {
+      "path_prefix": "10_Decathlon/Task10_Colon/",
+      "source_dataset": "MSD_Task10_Colon",
+      "primary_organ": "colon",
+      "target_region": "colon_tumor",
+      "cancer_type": "colon_tumor",
+      "tumor_label_values": [1]
+    },
+    {
+      "path_prefix": "08_AbdomenCT-1K/",
+      "filename_token": "03",
+      "source_dataset": "AbdomenCT-1K",
+      "primary_organ": "liver",
+      "target_region": "liver_tumor",
+      "cancer_type": "liver_tumor",
+      "tumor_label_values": [5]
+    },
+    {
+      "path_prefix": "08_AbdomenCT-1K/",
+      "filename_token": "05",
+      "source_dataset": "AbdomenCT-1K",
+      "primary_organ": "kidney",
+      "target_region": "kidney_tumor",
+      "cancer_type": "kidney_tumor",
+      "tumor_label_values": [6]
+    },
+    {
+      "path_prefix": "08_AbdomenCT-1K/",
+      "filename_token": "07",
+      "source_dataset": "AbdomenCT-1K",
+      "primary_organ": "pancreas",
+      "target_region": "pancreatic_tumor",
+      "cancer_type": "pancreatic_tumor",
+      "tumor_label_values": [7]
+    },
+    {
+      "path_prefix": "11_MSWAL/",
+      "filename_token": "03",
+      "source_dataset": "MSWAL",
+      "primary_organ": "liver",
+      "target_region": "liver_tumor",
+      "cancer_type": "liver_tumor",
+      "tumor_label_values": [3]
+    },
+    {
+      "path_prefix": "11_MSWAL/",
+      "filename_token": "05",
+      "source_dataset": "MSWAL",
+      "primary_organ": "kidney",
+      "target_region": "kidney_tumor",
+      "cancer_type": "kidney_tumor",
+      "tumor_label_values": [4]
+    },
+    {
+      "path_prefix": "11_MSWAL/",
+      "filename_token": "07",
+      "source_dataset": "MSWAL",
+      "primary_organ": "pancreas",
+      "target_region": "pancreatic_tumor",
+      "cancer_type": "pancreatic_tumor",
+      "tumor_label_values": [5]
+    }
+  ]
+}
