@@ -97,3 +97,17 @@ python scripts/train_pan_cancer_icl.py \
 
 脚本输出总体 macro Dice 和各器官肿瘤 Dice。正式比较时仅改变 `--ccti-mode`：
 `none`、`all`、`random`、`learned`，其余参数、manifest 和随机种子保持一致。
+
+## 4. BME Slurm 提交
+
+`slurm/train_paot2_ccti.sbatch` 遵循 BME 指南，从 `bme_gpu` 申请单节点、单张
+A100 80 GB、8 CPU、64 GB 内存和最长 120 小时。提交前保证日志目录存在：
+
+```bash
+cd /home_data/home/wangyb12023/Medverse-PAOT2
+mkdir -p work/slurm work/runs
+sbatch slurm/train_paot2_ccti.sbatch
+squeue -u wangyb12023
+```
+
+标准输出和错误分别保存在 `work/slurm/medverse_ccti-JOBID.out` 和 `.err`。
