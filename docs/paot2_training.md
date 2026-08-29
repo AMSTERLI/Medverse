@@ -3,6 +3,10 @@
 这条流水线只用于验证 CCTI/BCI channel selection 想法，不代表最终临床训练协议。
 它将每个 3D CT 和任务二值 mask 整体缩放为固定立方体，避免在验证时用真值位置裁剪。
 
+部分旧 PAOT2 标签的 NIfTI affine 是单位矩阵，但体素数组仍与 CT 按索引对齐。加载器
+在 image/mask shape 相同而 affine 不同时保留原始体素索引，不会分别 canonicalize
+造成单侧翻转；shape 不同时仍立即报错。
+
 ## 标签定义
 
 完整机器可读规则见 `configs/paot2_task_map.json`。

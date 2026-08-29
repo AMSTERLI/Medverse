@@ -129,6 +129,7 @@ def main() -> None:
     parser.add_argument("--eval-only", action="store_true")
     parser.add_argument("--max-train-steps", type=int)
     parser.add_argument("--max-val-steps", type=int)
+    parser.add_argument("--log-every", type=int, default=50)
     parser.add_argument(
         "--allow-uninspected-context",
         action="store_true",
@@ -221,6 +222,18 @@ def main() -> None:
             scaler.step(optimizer)
             scaler.update()
             running_loss.append(float(loss.detach()))
+            if args.log_every > 0 and (step + 1) % args.log_every == 0:
+                print(
+                    json.dumps(
+                        {
+                            "epoch": epoch + 1,
+                            "train_step": step + 1,
+                            "train_steps_total": len(train_loader),
+                            "train_loss_running": float(np.mean(running_loss)),
+                        }
+                    ),
+                    flush=True,
+                )
 
         metrics = evaluate(model, val_loader, device, context_chunk, args.max_val_steps)
         report = {

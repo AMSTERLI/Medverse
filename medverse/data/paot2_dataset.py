@@ -46,13 +46,36 @@ def _resolve(path: str, data_root: Path | None) -> Path:
     return data_root / candidate
 
 
-def _load_canonical(path: Path) -> tuple[np.ndarray, np.ndarray]:
-    nii = nib.as_closest_canonical(nib.load(str(path)))
+def _array_from_nifti(nii: nib.spatialimages.SpatialImage) -> np.ndarray:
     data = np.asanyarray(nii.dataobj)
     data = np.squeeze(data)
     if data.ndim != 3:
-        raise ValueError(f"expected a 3D NIfTI, got {data.shape} from {path}")
-    return data, nii.affine
+        raise ValueError(f"expected a 3D NIfTI, got {data.shape}")
+    return data
+
+
+def _load_aligned_pair(image_path: Path, mask_path: Path) -> tuple[np.ndarray, np.ndarray]:
+    """Load an image-mask pair without separating a legacy voxel alignment.
+
+    Some PAOT2 labels have an identity affine even though their voxel arrays
+    are aligned with the corresponding CT.  Canonicalizing those files
+    independently would flip only the CT.  When shapes agree but affines do
+    not, preserve the original shared voxel index grid used by the prior
+    project.  When affines agree, canonicalize both files normally.
+    """
+
+    image_nii = nib.load(str(image_path))
+    mask_nii = nib.load(str(mask_path))
+    if tuple(image_nii.shape) != tuple(mask_nii.shape):
+        raise ValueError(
+            f"shape mismatch: {image_nii.shape} for {image_path} vs "
+            f"{mask_nii.shape} for {mask_path}"
+        )
+
+    if np.allclose(image_nii.affine, mask_nii.affine, atol=1e-3):
+        image_nii = nib.as_closest_canonical(image_nii)
+        mask_nii = nib.as_closest_canonical(mask_nii)
+    return _array_from_nifti(image_nii), _array_from_nifti(mask_nii)
 
 
 def _resize(array: np.ndarray, size: int, mode: str) -> torch.Tensor:
@@ -71,12 +94,10 @@ def load_ct_task(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     image_path = _resolve(row["image"], data_root)
     mask_path = _resolve(row["mask"], data_root)
-    image, image_affine = _load_canonical(image_path)
-    mask, mask_affine = _load_canonical(mask_path)
-    if image.shape != mask.shape:
-        raise ValueError(f"shape mismatch for {row['case_id']}: {image.shape} vs {mask.shape}")
-    if not np.allclose(image_affine, mask_affine, atol=1e-3):
-        raise ValueError(f"affine mismatch for {row['case_id']}")
+    try:
+        image, mask = _load_aligned_pair(image_path, mask_path)
+    except ValueError as exc:
+        raise ValueError(f"{row['case_id']}: {exc}") from exc
     if not np.isfinite(image).all():
         raise ValueError(f"non-finite CT values in {image_path}")
 
