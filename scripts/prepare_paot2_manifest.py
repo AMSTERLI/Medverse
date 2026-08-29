@@ -91,10 +91,13 @@ def convert_list(
     data_root: Path | None,
     inspect_labels: bool,
     drop_empty: bool,
+    progress_every: int,
 ) -> tuple[list[dict], Counter]:
     rows: list[dict] = []
     stats: Counter = Counter()
     for line_number, image_path, mask_path in read_pairs(pair_path):
+        if inspect_labels and progress_every > 0 and line_number % progress_every == 0:
+            print(f"[{split}] inspected {line_number} pair rows", flush=True)
         image_fs = resolve_data_path(image_path, data_root)
         mask_fs = resolve_data_path(mask_path, data_root)
         if data_root is not None and (not image_fs.is_file() or not mask_fs.is_file()):
@@ -160,6 +163,12 @@ def main() -> None:
         action="store_true",
         help="Keep zero-foreground task episodes (only meaningful with --inspect-labels).",
     )
+    parser.add_argument(
+        "--progress-every",
+        type=int,
+        default=100,
+        help="Print progress every N physical pairs during --inspect-labels.",
+    )
     args = parser.parse_args()
 
     rules = load_rules(args.task_map)
@@ -173,6 +182,7 @@ def main() -> None:
             data_root=args.data_root,
             inspect_labels=args.inspect_labels,
             drop_empty=args.inspect_labels and not args.keep_empty,
+            progress_every=args.progress_every,
         )
         all_rows.extend(rows)
         all_stats.update(stats)

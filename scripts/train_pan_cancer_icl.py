@@ -5,8 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import sys
 from collections import defaultdict
 from pathlib import Path
+
+# Allow running the script directly from a source checkout without installing
+# the package first.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import numpy as np
 import torch
@@ -124,6 +129,11 @@ def main() -> None:
     parser.add_argument("--eval-only", action="store_true")
     parser.add_argument("--max-train-steps", type=int)
     parser.add_argument("--max-val-steps", type=int)
+    parser.add_argument(
+        "--allow-uninspected-context",
+        action="store_true",
+        help="Fast smoke-test only: allow manifests without foreground_voxels.",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--no-amp", action="store_true")
     args = parser.parse_args()
@@ -141,6 +151,7 @@ def main() -> None:
         image_size=args.image_size,
         data_root=args.data_root,
         seed=args.seed,
+        require_inspected_context=not args.allow_uninspected_context,
     )
     train_dataset = PAOT2ICLDataset(split="train", **common)
     val_dataset = PAOT2ICLDataset(split="val", **common)

@@ -44,11 +44,22 @@ GitHub。
 
 ## 2. 一步训练 smoke test
 
-先用小模型和 64³ 输入验证加载、前向、反向及验证：
+如需立即测试想法，可以先生成不扫描前景体素的快速 manifest：
+
+```bash
+python scripts/prepare_paot2_manifest.py \
+  --train-pairs data_lists/PAOT2_train.txt \
+  --val-pairs data_lists/PAOT2_val.txt \
+  --data-root /public_bme2/bme-dgshen/RunqiMeng/project \
+  --output work/paot2_icl_uninspected.jsonl
+```
+
+然后用小模型和 64³ 输入验证加载、前向、反向及验证。`--allow-uninspected-context`
+只应用于这次快速 smoke；正式训练仍使用上一节经过 `--inspect-labels` 的 manifest。
 
 ```bash
 python scripts/train_pan_cancer_icl.py \
-  --manifest /private/workdir/paot2_icl.jsonl \
+  --manifest work/paot2_icl_uninspected.jsonl \
   --output-dir /private/workdir/runs/smoke \
   --image-size 64 \
   --channels 8,16,32,64,128 \
@@ -57,7 +68,8 @@ python scripts/train_pan_cancer_icl.py \
   --workers 2 \
   --epochs 1 \
   --max-train-steps 1 \
-  --max-val-steps 1
+  --max-val-steps 1 \
+  --allow-uninspected-context
 ```
 
 成功标准是产生一条 train/val 指标记录以及 `last.pt`、`best.pt`。

@@ -1,6 +1,10 @@
 """CPU-friendly shape/gradient smoke test for the standalone CCTI block."""
 
 import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import torch
 
