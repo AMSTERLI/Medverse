@@ -115,3 +115,11 @@ squeue -u wangyb12023
 ```
 
 标准输出和错误分别保存在 `work/slurm/medverse_ccti-JOBID.out` 和 `.err`。
+
+无 BCI/CCTI 基线使用完全相同的训练配置，只通过 `--disable-ccti` 关闭模块：
+
+```bash
+sbatch slurm/train_paot2_no_ccti.sbatch
+```
+
+其 checkpoint 写入 `work/runs/no_ccti_seed17_64/`，与 learned CCTI 结果隔离。
