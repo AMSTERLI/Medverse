@@ -101,7 +101,7 @@ python scripts/train_pan_cancer_icl.py \
 ## 4. BME Slurm 提交
 
 `slurm/train_paot2_ccti.sbatch` 遵循 BME 指南，从 `bme_gpu` 申请单节点、单张
-A100 80 GB、8 CPU、64 GB 内存和最长 120 小时。提交前保证日志目录存在：
+A100 40 GB、8 CPU、64 GB 内存和最长 120 小时。提交前保证日志目录存在：
 
 ```bash
 cd /home_data/home/wangyb12023/Medverse-PAOT2

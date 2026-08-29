@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=120:00:00
-#SBATCH --gres=gpu:NVIDIAA10080GBPCIe:1
+#SBATCH --gres=gpu:NVIDIAA100-PCIE-40GB:1
 #SBATCH --output=work/slurm/%x-%j.out
 #SBATCH --error=work/slurm/%x-%j.err
 
