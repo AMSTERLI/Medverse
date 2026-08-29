@@ -24,7 +24,12 @@ class Medverse(nn.Module):
                  conv_layers_per_stage,
                  patch_num = 4,
                  hidden_size=66,
-                 img_size=128
+                 img_size=128,
+                 use_ccti=False,
+                 ccti_mode='learned',
+                 ccti_channel_ratio=0.25,
+                 ccti_bidirectional=True,
+                 ccti_stage_indices=(0, 1, 2),
                 ):
         super().__init__()
         self.context_unet = ContextUNet(in_channels = in_channels,
@@ -55,7 +60,12 @@ class Medverse(nn.Module):
                                     output_block_cls = PairwiseConvAvgModelOutput,
                                     kwargs = {'conv_layers_per_stage':conv_layers_per_stage},
                                     patch_num = patch_num,
-                                    attention_dim = hidden_size)
+                                    attention_dim = hidden_size,
+                                    use_ccti=use_ccti,
+                                    ccti_mode=ccti_mode,
+                                    ccti_channel_ratio=ccti_channel_ratio,
+                                    ccti_bidirectional=ccti_bidirectional,
+                                    ccti_stage_indices=tuple(ccti_stage_indices))
     
         self.dim = dim
         self.stages = stages
@@ -159,6 +169,7 @@ class Medverse(nn.Module):
                 context_out,  # BxLxCinxHxWxD
                 image_context_in = None, # BxLxCinxHxWxD
                 image_context_out = None, # BxLxCinxHxWxD
+                retrieval_similarity = None,
                 l=3):
         '''
         Args:
@@ -236,7 +247,8 @@ class Medverse(nn.Module):
             context_features_mean, 
             shortcuts,
             pos_embed_q=target_pos_embed.to(next(self.parameters()).device),
-            pos_embed_k=context_pos_embed_mean.to(next(self.parameters()).device)
+            pos_embed_k=context_pos_embed_mean.to(next(self.parameters()).device),
+            retrieval_similarity=retrieval_similarity,
         ) # BxCoutxHxWxD
         
         return output

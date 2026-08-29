@@ -67,3 +67,11 @@ with torch.no_grad():
 ## Acknowledgements
 This repository was modified from [Neuroverse3D](https://github.com/jiesihu/Neuroverse3D).
 
+## Pan-cancer segmentation MVP
+
+This working copy also contains a segmentation-only `PanCancerMedverse` and a
+BCSI-inspired Channel-selective Context-Target Interaction (CCTI) experiment.
+The channel ablation modes (`none`, `all`, `random`, `learned`) and the default
+MVP settings are documented in `configs/pan_cancer_ccti_mvp.yaml`.  Run
+`python scripts/smoke_test_ccti.py` for a small standalone check.
+

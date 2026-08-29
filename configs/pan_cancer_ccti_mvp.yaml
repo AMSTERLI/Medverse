@@ -1,0 +1,31 @@
+project: pan_cancer_medverse_ccti_mvp
+task:
+  type: binary_3d_tumor_segmentation
+  segmentation_only: true
+  metadata_is_network_input: false
+
+model:
+  class: medverse.models.pan_cancer_medverse.PanCancerMedverse
+  use_na_icl: true
+  use_bam: true
+  use_ccti: true
+  ccti_stage_indices: [0, 1, 2]  # bottleneck, two deepest decoder stages
+  ccti_mode: learned             # none | all | random | learned
+  ccti_channel_ratio: 0.25
+  ccti_bidirectional: true
+
+context:
+  num_cases: 2
+  hard_filters: [target_region, modality, primary_organ]
+  context_mask_semantics: binary_and_identical_with_target
+  retrieval: hard_filter_only   # CCR embedding retrieval is intentionally deferred
+
+loss:
+  dice_weight: 1.0
+  bce_weight: 1.0
+  deep_supervision: false       # enable after a stable baseline exists
+
+ablation:
+  ccti_modes: [none, all, random, learned]
+  channel_ratios: [0.125, 0.25, 0.5, 1.0]
+  seeds: [17, 29, 41]

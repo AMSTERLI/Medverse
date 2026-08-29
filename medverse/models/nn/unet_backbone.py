@@ -10,6 +10,7 @@ from .layers import ConvBlock_target_encoder, ConvBlock_context_c2t,DefaultUnetO
         ConvBlock_context_t2c, UnetDownsampleAndCreateShortcutBlock, UnetUpsampleAndConcatShortcutBlock,DefaultUnetStageBlock
 
 from einops import rearrange
+from .ccti import ChannelSelectiveContextTargetInteraction
 
 @dataclass(eq=False, repr=False)
 class TargetEncoder(nn.Module):
@@ -354,6 +355,11 @@ class TargetDecoder(nn.Module):
     image_size: int = 128
     attention_dim: int = 66
     patch_num: int = 4
+    use_ccti: bool = False
+    ccti_mode: str = 'learned'
+    ccti_channel_ratio: float = 0.25
+    ccti_bidirectional: bool = True
+    ccti_stage_indices: Tuple[int, ...] = (0, 1, 2)
 
     def __post_init__(self):
         super().__init__()
@@ -384,6 +390,24 @@ class TargetDecoder(nn.Module):
                                                   out_channels=self.out_channels,
                                                   dim=self.dim,
                                                   kwargs=self.kwargs)
+
+        # Execution order is bottleneck, then decoder stages from deep to shallow.
+        # CCTI runs immediately before the existing spatial cross-attention (BAM).
+        execution_channels = [self.inner_channels[-1]] + [
+            self.inner_channels[-(i + 2)] for i in range(self.stages - 1)
+        ]
+        self.ccti_blocks = nn.ModuleDict()
+        if self.use_ccti:
+            for stage_index in self.ccti_stage_indices:
+                if stage_index < 0 or stage_index >= len(execution_channels):
+                    raise ValueError(f"invalid CCTI stage index {stage_index}")
+                self.ccti_blocks[str(stage_index)] = ChannelSelectiveContextTargetInteraction(
+                    channels=execution_channels[stage_index],
+                    channel_ratio=self.ccti_channel_ratio,
+                    mode=self.ccti_mode,
+                    bidirectional=self.ccti_bidirectional,
+                    spatial_dims=self.dim,
+                )
 
         for i in range(self.stages):
             if i < self.stages - 1:
@@ -425,6 +449,7 @@ class TargetDecoder(nn.Module):
                 shortcuts: list,
                 pos_embed_q: Optional[torch.Tensor] = None,
                 pos_embed_k: Optional[torch.Tensor] = None,
+                retrieval_similarity: Optional[torch.Tensor] = None,
                 ) -> torch.Tensor:
         """Performs the forward pass
 
@@ -447,7 +472,12 @@ class TargetDecoder(nn.Module):
         num_enc = len(self.enc_blocks)
         for i in range(num_enc):
             # run block
-            target = self.enc_blocks[i](context_features_mean[i], target, pos_embed_q=pos_embed_q, pos_embed_k=pos_embed_k)
+            context_feature = context_features_mean[i]
+            if str(i) in self.ccti_blocks:
+                target, context_feature = self.ccti_blocks[str(i)](
+                    target, context_feature, retrieval_similarity
+                )
+            target = self.enc_blocks[i](context_feature, target, pos_embed_q=pos_embed_q, pos_embed_k=pos_embed_k)
         # feed through decoder
         shortcuts = shortcuts[::-1]
         for i in range(self.stages - 1):
@@ -456,7 +486,13 @@ class TargetDecoder(nn.Module):
                 None, target, shortcuts[i])
 
             # run block
-            target = self.dec_blocks[i](context_features_mean[i+1], target, pos_embed_q=pos_embed_q, pos_embed_k=pos_embed_k)
+            stage_index = i + num_enc
+            context_feature = context_features_mean[i + 1]
+            if str(stage_index) in self.ccti_blocks:
+                target, context_feature = self.ccti_blocks[str(stage_index)](
+                    target, context_feature, retrieval_similarity
+                )
+            target = self.dec_blocks[i](context_feature, target, pos_embed_q=pos_embed_q, pos_embed_k=pos_embed_k)
 
         # apply output block
         return self.output_block(target)

@@ -8,6 +8,7 @@ import random
 
 import pytorch_lightning as pl
 from .models.Medverse import Medverse
+from .models.pan_cancer_medverse import PanCancerMedverse
 from .util.shapecheck import ShapeChecker
 from .models.attention_utils.patch_utils import calculate_intersection_matrix
 
@@ -31,12 +32,35 @@ class LightningModel(pl.LightningModule):
         self.save_hyperparameters(hparams)
         
         # build model
-        self.net = Medverse(in_channels = 1, 
-                    out_channels = 1, 
-                    stages = len(self.hparams.nb_inner_channels), 
-                    dim = 2 if self.hparams.data_slice_only else 3,
-                    inner_channels = self.hparams.nb_inner_channels,
-                    conv_layers_per_stage = self.hparams.nb_conv_layers_per_stage)
+        ccti_kwargs = dict(
+            use_ccti=getattr(self.hparams, 'use_ccti', False),
+            ccti_mode=getattr(self.hparams, 'ccti_mode', 'learned'),
+            ccti_channel_ratio=getattr(self.hparams, 'ccti_channel_ratio', 0.25),
+            ccti_bidirectional=getattr(self.hparams, 'ccti_bidirectional', True),
+            ccti_stage_indices=getattr(self.hparams, 'ccti_stage_indices', (0, 1, 2)),
+        )
+        if getattr(self.hparams, 'segmentation_only', False):
+            if self.hparams.data_slice_only:
+                raise ValueError("PanCancerMedverse is a 3D-only segmentation model")
+            self.net = PanCancerMedverse(
+                inner_channels=self.hparams.nb_inner_channels,
+                conv_layers_per_stage=self.hparams.nb_conv_layers_per_stage,
+                patch_num=getattr(self.hparams, 'patch_num', 4),
+                hidden_size=getattr(self.hparams, 'hidden_size', 66),
+                img_size=getattr(self.hparams, 'img_size', 128),
+                **ccti_kwargs,
+            )
+        else:
+            # Backward-compatible path for existing Medverse checkpoints.
+            self.net = Medverse(
+                in_channels=1,
+                out_channels=1,
+                stages=len(self.hparams.nb_inner_channels),
+                dim=2 if self.hparams.data_slice_only else 3,
+                inner_channels=self.hparams.nb_inner_channels,
+                conv_layers_per_stage=self.hparams.nb_conv_layers_per_stage,
+                **ccti_kwargs,
+            )
         
         
     def forward(self, 
@@ -45,6 +69,7 @@ class LightningModel(pl.LightningModule):
                 context_out = None,  # BxLxCinxHxWxD for semantic context
                 image_context_in = None, # BxLxCinxHxWxD for NA-ICL input
                 image_context_out = None, # BxLxCinxHxWxD for NA-ICL input
+                retrieval_similarity = None,
                 l=3, # Mini-context size for adaptive sequential-parallel context processing
                ):
         
@@ -57,6 +82,7 @@ class LightningModel(pl.LightningModule):
                           context_out=context_out, 
                           image_context_in = image_context_in, # BxLxCinxHxWxD
                           image_context_out = image_context_out, # BxLxCinxHxWxD
+                          retrieval_similarity=retrieval_similarity,
                           l = l,
                          )
         return y_pred
