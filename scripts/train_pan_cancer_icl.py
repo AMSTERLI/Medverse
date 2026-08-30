@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from medverse.data import PAOT2ICLDataset
 from medverse.models.pan_cancer_medverse import PanCancerMedverse
@@ -38,8 +38,9 @@ def dice_loss(logits: torch.Tensor, target: torch.Tensor, eps: float = 1e-5) -> 
     return (1.0 - (2.0 * intersection + eps) / (denominator + eps)).mean()
 
 
-def segmentation_loss(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    return F.binary_cross_entropy_with_logits(logits, target) + dice_loss(logits, target)
+def segmentation_loss(logits: torch.Tensor, target: torch.Tensor, positive_weight: float = 8.0) -> torch.Tensor:
+    pos_weight = torch.as_tensor(positive_weight, device=logits.device, dtype=logits.dtype)
+    return F.binary_cross_entropy_with_logits(logits, target, pos_weight=pos_weight) + dice_loss(logits, target)
 
 
 def hard_dice(logits: torch.Tensor, target: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
@@ -49,6 +50,36 @@ def hard_dice(logits: torch.Tensor, target: torch.Tensor, eps: float = 1e-5) -> 
     intersection = (prediction & truth).sum(dims).float()
     denominator = prediction.sum(dims).float() + truth.sum(dims).float()
     return (2.0 * intersection + eps) / (denominator + eps)
+
+
+def _window_starts(size: int, patch_size: int, overlap: float) -> list[int]:
+    if size <= patch_size:
+        return [0]
+    stride = max(1, int(round(patch_size * (1.0 - overlap))))
+    starts = list(range(0, size - patch_size + 1, stride))
+    if starts[-1] != size - patch_size:
+        starts.append(size - patch_size)
+    return starts
+
+
+@torch.no_grad()
+def sliding_window_logits(model, target, context_in, context_out, patch_size, overlap, context_chunk):
+    """Infer an arbitrarily sized target by averaging overlapping patch logits."""
+    original_shape = target.shape[-3:]
+    pad = [max(0, patch_size - size) for size in original_shape]
+    target = F.pad(target, (0, pad[2], 0, pad[1], 0, pad[0]))
+    output = torch.zeros_like(target)
+    count = torch.zeros_like(target)
+    starts = [_window_starts(size, patch_size, overlap) for size in target.shape[-3:]]
+    for d in starts[0]:
+        for h in starts[1]:
+            for w in starts[2]:
+                patch = target[:, :, d:d + patch_size, h:h + patch_size, w:w + patch_size]
+                logits = model(patch, context_in, context_out, l=context_chunk)
+                output[:, :, d:d + patch_size, h:h + patch_size, w:w + patch_size] += logits
+                count[:, :, d:d + patch_size, h:h + patch_size, w:w + patch_size] += 1
+    output = output / count.clamp_min(1)
+    return output[:, :, :original_shape[0], :original_shape[1], :original_shape[2]]
 
 
 def move_batch(batch: dict, device: torch.device) -> tuple[torch.Tensor, ...]:
@@ -85,24 +116,42 @@ def load_weights(model: torch.nn.Module, path: Path, strict: bool) -> None:
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, context_chunk: int, max_steps: int | None = None) -> dict:
+def evaluate(
+    model, loader, device, context_chunk: int, patch_size: int, overlap: float,
+    positive_weight: float, max_steps: int | None = None, log_every: int = 20,
+) -> dict:
     model.eval()
     by_task: dict[str, list[float]] = defaultdict(list)
-    losses = []
+    losses, empty_false_positive_rates = [], []
+    positive_cases = empty_cases = 0
     for step, batch in enumerate(loader):
         if max_steps is not None and step >= max_steps:
             break
         target_in, target_out, context_in, context_out = move_batch(batch, device)
-        logits = model(target_in, context_in, context_out, l=context_chunk)
-        losses.append(float(segmentation_loss(logits, target_out)))
+        logits = sliding_window_logits(
+            model, target_in, context_in, context_out, patch_size, overlap, context_chunk
+        )
+        losses.append(float(segmentation_loss(logits, target_out, positive_weight)))
+        foreground = target_out.flatten(1).sum(1) > 0
         scores = hard_dice(logits, target_out).cpu().tolist()
-        for task, score in zip(batch["target_region"], scores):
-            by_task[task].append(score)
+        predictions = (torch.sigmoid(logits) >= 0.5).flatten(1)
+        for task, score, is_positive, prediction in zip(batch["target_region"], scores, foreground.tolist(), predictions):
+            if is_positive:
+                by_task[task].append(score)
+                positive_cases += 1
+            else:
+                empty_false_positive_rates.append(float(prediction.float().mean().cpu()))
+                empty_cases += 1
+        if log_every > 0 and (step + 1) % log_every == 0:
+            print(json.dumps({"val_step": step + 1, "val_steps_total": len(loader)}), flush=True)
     task_dice = {task: float(np.mean(values)) for task, values in sorted(by_task.items())}
     return {
         "loss": float(np.mean(losses)) if losses else float("nan"),
         "macro_dice": float(np.mean(list(task_dice.values()))) if task_dice else float("nan"),
         "task_dice": task_dice,
+        "positive_cases": positive_cases,
+        "empty_cases": empty_cases,
+        "empty_false_positive_rate": float(np.mean(empty_false_positive_rates)) if empty_false_positive_rates else float("nan"),
     }
 
 
@@ -117,6 +166,12 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-5)
     parser.add_argument("--image-size", type=int, default=128)
+    parser.add_argument("--target-spacing", default="2.0,2.0,3.0")
+    parser.add_argument("--positive-patch-probability", type=float, default=0.7)
+    parser.add_argument("--positive-weight", type=float, default=8.0)
+    parser.add_argument("--val-overlap", type=float, default=0.5)
+    parser.add_argument("--val-cases-per-task", type=int, default=20)
+    parser.add_argument("--disable-task-balancing", action="store_true")
     parser.add_argument("--num-context", type=int, default=2)
     parser.add_argument("--channels", default="16,32,64,128,256")
     parser.add_argument("--conv-layers", type=int, default=2)
@@ -141,6 +196,11 @@ def main() -> None:
 
     if args.image_size % 16 or args.image_size % 4:
         raise ValueError("--image-size must be divisible by both 16 and patch_num=4")
+    target_spacing = tuple(float(value) for value in args.target_spacing.split(","))
+    if len(target_spacing) != 3 or any(value <= 0 for value in target_spacing):
+        raise ValueError("--target-spacing must contain three positive comma-separated values")
+    if not 0 <= args.positive_patch_probability <= 1 or not 0 <= args.val_overlap < 1:
+        raise ValueError("patch probability must be in [0,1] and validation overlap in [0,1)")
     seed_everything(args.seed)
     device = torch.device(args.device)
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -150,23 +210,39 @@ def main() -> None:
         context_split="train",
         num_context=args.num_context,
         image_size=args.image_size,
+        target_spacing=target_spacing,
+        positive_probability=args.positive_patch_probability,
         data_root=args.data_root,
         seed=args.seed,
         require_inspected_context=not args.allow_uninspected_context,
     )
-    train_dataset = PAOT2ICLDataset(split="train", **common)
-    val_dataset = PAOT2ICLDataset(split="val", **common)
+    train_dataset = PAOT2ICLDataset(split="train", full_volume_target=False, **common)
+    val_dataset = PAOT2ICLDataset(
+        split="val", full_volume_target=True, drop_empty_targets=False,
+        max_cases_per_task=args.val_cases_per_task, **common
+    )
+    sampler = None
+    if not args.disable_task_balancing:
+        task_counts: dict[str, int] = defaultdict(int)
+        for row in train_dataset.rows:
+            task_counts[row["target_region"]] += 1
+        weights = [1.0 / task_counts[row["target_region"]] for row in train_dataset.rows]
+        sampler = WeightedRandomSampler(
+            weights, num_samples=len(train_dataset), replacement=True,
+            generator=torch.Generator().manual_seed(args.seed),
+        )
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=sampler is None,
+        sampler=sampler,
         num_workers=args.workers,
         pin_memory=device.type == "cuda",
         persistent_workers=args.workers > 0,
     )
     val_loader = DataLoader(
         val_dataset,
-        batch_size=args.batch_size,
+        batch_size=1,
         shuffle=False,
         num_workers=args.workers,
         pin_memory=device.type == "cuda",
@@ -196,12 +272,21 @@ def main() -> None:
                 "use_ccti": not args.disable_ccti,
                 "ccti_mode": args.ccti_mode if not args.disable_ccti else "disabled",
                 "channels": channels,
+                "patch_size": args.image_size,
+                "target_spacing": target_spacing,
+                "positive_patch_probability": args.positive_patch_probability,
+                "positive_weight": args.positive_weight,
+                "task_balancing": sampler is not None,
+                "validation": "full_volume_sliding_window",
             }
         )
     )
     context_chunk = min(args.num_context, 2)
     if args.eval_only:
-        print(json.dumps(evaluate(model, val_loader, device, context_chunk, args.max_val_steps), indent=2))
+        print(json.dumps(evaluate(
+            model, val_loader, device, context_chunk, args.image_size, args.val_overlap,
+            args.positive_weight, args.max_val_steps, args.log_every,
+        ), indent=2))
         return
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -218,7 +303,7 @@ def main() -> None:
             optimizer.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=amp_enabled):
                 logits = model(target_in, context_in, context_out, l=context_chunk)
-                loss = segmentation_loss(logits, target_out)
+                loss = segmentation_loss(logits, target_out, args.positive_weight)
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -236,7 +321,10 @@ def main() -> None:
                     flush=True,
                 )
 
-        metrics = evaluate(model, val_loader, device, context_chunk, args.max_val_steps)
+        metrics = evaluate(
+            model, val_loader, device, context_chunk, args.image_size, args.val_overlap,
+            args.positive_weight, args.max_val_steps, args.log_every,
+        )
         report = {
             "epoch": epoch + 1,
             "train_loss": float(np.mean(running_loss)) if running_loss else float("nan"),

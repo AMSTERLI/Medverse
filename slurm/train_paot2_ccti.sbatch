@@ -14,8 +14,8 @@ set -euo pipefail
 
 MEDVERSE_PROJECT_DIR=/home_data/home/wangyb12023/Medverse-PAOT2
 MEDVERSE_PYTHON=/home_data/home/wangyb12023/anaconda3/envs/renal/bin/python
-MEDVERSE_MANIFEST=${MEDVERSE_PROJECT_DIR}/work/paot2_icl_uninspected.jsonl
-MEDVERSE_RUN_DIR=${MEDVERSE_PROJECT_DIR}/work/runs/learned_seed17_64
+MEDVERSE_MANIFEST=${MEDVERSE_PROJECT_DIR}/work/paot2_icl_inspected.jsonl
+MEDVERSE_RUN_DIR=${MEDVERSE_PROJECT_DIR}/work/runs/learned_seed17_patch128
 
 cd "${MEDVERSE_PROJECT_DIR}"
 export PYTHONUNBUFFERED=1
@@ -30,19 +30,23 @@ nvidia-smi
 "${MEDVERSE_PYTHON}" scripts/train_pan_cancer_icl.py \
   --manifest "${MEDVERSE_MANIFEST}" \
   --output-dir "${MEDVERSE_RUN_DIR}" \
-  --image-size 64 \
+  --image-size 128 \
+  --target-spacing 2.0,2.0,3.0 \
+  --positive-patch-probability 0.7 \
+  --positive-weight 8 \
+  --val-overlap 0.5 \
+  --val-cases-per-task 20 \
   --channels 8,16,32,64,128 \
   --conv-layers 2 \
   --num-context 1 \
   --batch-size 1 \
   --workers 4 \
-  --epochs 20 \
+  --epochs 5 \
   --lr 1e-4 \
   --weight-decay 1e-5 \
   --ccti-mode learned \
   --ccti-ratio 0.25 \
   --seed 17 \
-  --allow-uninspected-context \
   --device cuda
 
 echo "end_time=$(date --iso-8601=seconds)"

@@ -7,7 +7,7 @@ try:
     import numpy as np
     import torch  # noqa: F401 - required by the dataset module
 
-    from medverse.data.paot2_dataset import _load_aligned_pair
+    from medverse.data.paot2_dataset import _crop_or_pad, _load_aligned_pair
 
     HAS_DEPS = True
 except ImportError:
@@ -26,9 +26,10 @@ class PAOT2AlignmentTests(unittest.TestCase):
             mask_path = Path(directory) / "mask.nii.gz"
             nib.save(nib.Nifti1Image(image, image_affine), image_path)
             nib.save(nib.Nifti1Image(mask, mask_affine), mask_path)
-            loaded_image, loaded_mask = _load_aligned_pair(image_path, mask_path)
+            loaded_image, loaded_mask, spacing = _load_aligned_pair(image_path, mask_path)
         np.testing.assert_array_equal(loaded_image, image)
         np.testing.assert_array_equal(loaded_mask, mask)
+        self.assertEqual(spacing, (2.0, 2.0, 3.0))
 
     def test_matching_affines_canonicalize_both_arrays_together(self):
         image = np.arange(24, dtype=np.float32).reshape(2, 3, 4)
@@ -39,9 +40,17 @@ class PAOT2AlignmentTests(unittest.TestCase):
             mask_path = Path(directory) / "mask.nii.gz"
             nib.save(nib.Nifti1Image(image, affine), image_path)
             nib.save(nib.Nifti1Image(mask, affine), mask_path)
-            loaded_image, loaded_mask = _load_aligned_pair(image_path, mask_path)
+            loaded_image, loaded_mask, spacing = _load_aligned_pair(image_path, mask_path)
         np.testing.assert_array_equal(loaded_image, image[::-1])
         np.testing.assert_array_equal(loaded_mask, mask[::-1])
+        self.assertEqual(spacing, (2.0, 2.0, 3.0))
+
+    def test_crop_or_pad_keeps_requested_center_and_shape(self):
+        volume = torch.zeros((1, 5, 6, 7))
+        volume[0, 0, 0, 0] = 1
+        patch = _crop_or_pad(volume, (0, 0, 0), 4)
+        self.assertEqual(tuple(patch.shape), (1, 4, 4, 4))
+        self.assertEqual(float(patch[0, 2, 2, 2]), 1.0)
 
 
 if __name__ == "__main__":

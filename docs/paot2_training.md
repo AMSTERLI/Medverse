@@ -1,7 +1,9 @@
 # PAOT2 CT ICL 最小训练
 
 这条流水线只用于验证 CCTI/BCI channel selection 想法，不代表最终临床训练协议。
-它将每个 3D CT 和任务二值 mask 整体缩放为固定立方体，避免在验证时用真值位置裁剪。
+它先按物理 spacing 重采样 CT 和标签。训练时使用 128³ 肿瘤感知 patch：context
+始终为阳性，target 以 70% 概率采阳性中心、30% 概率采体内背景。验证时不使用
+真值定位，而是在完整重采样 CT 上做滑窗推理。
 
 部分旧 PAOT2 标签的 NIfTI affine 是单位矩阵，但体素数组仍与 CT 按索引对齐。加载器
 在 image/mask shape 相同而 affine 不同时保留原始体素索引，不会分别 canonicalize
@@ -37,14 +39,15 @@ python scripts/prepare_paot2_manifest.py \
   --val-pairs /path/to/PAOT2_val.txt \
   --data-root /public_bme2/bme-dgshen/RunqiMeng/project \
   --inspect-labels \
+  --keep-empty \
   --output /private/workdir/paot2_icl.jsonl
 
 python scripts/validate_pan_cancer_manifest.py /private/workdir/paot2_icl.jsonl
 ```
 
-`--inspect-labels` 会确认路径存在、读取 NIfTI 缩放系数、统计每个任务的肿瘤体素，
-并默认删除该任务肿瘤为空的 episode。生成的 manifest 含绝对服务器路径，不应提交
-GitHub。
+`--inspect-labels` 会确认路径存在、读取 NIfTI 缩放系数、统计每个任务的肿瘤体素。
+正式 manifest 同时使用 `--keep-empty`：训练数据集会过滤空 episode，验证则保留它们
+用于计算误检率。生成的 manifest 含绝对服务器路径，不应提交 GitHub。
 
 ## 2. 一步训练 smoke test
 
@@ -85,10 +88,15 @@ python scripts/train_pan_cancer_icl.py \
   --manifest /private/workdir/paot2_icl.jsonl \
   --output-dir /private/workdir/runs/learned_seed17 \
   --image-size 128 \
-  --num-context 2 \
+  --target-spacing 2.0,2.0,3.0 \
+  --positive-patch-probability 0.7 \
+  --positive-weight 8 \
+  --val-overlap 0.5 \
+  --val-cases-per-task 20 \
+  --num-context 1 \
   --batch-size 1 \
   --workers 4 \
-  --epochs 20 \
+  --epochs 5 \
   --ccti-mode learned \
   --ccti-ratio 0.25 \
   --seed 17
@@ -99,7 +107,9 @@ python scripts/train_pan_cancer_icl.py \
   --eval-only
 ```
 
-脚本输出总体 macro Dice 和各器官肿瘤 Dice。正式比较时仅改变 `--ccti-mode`：
+训练按肿瘤任务做均衡采样，损失为正类加权 BCE + soft Dice。脚本只对阳性病例
+计算总体 macro Dice 和各器官肿瘤 Dice，并另外输出空标签病例的体素误检率。
+正式比较时仅改变 `--ccti-mode`：
 `none`、`all`、`random`、`learned`，其余参数、manifest 和随机种子保持一致。
 
 ## 4. BME Slurm 提交
@@ -122,4 +132,4 @@ squeue -u wangyb12023
 sbatch slurm/train_paot2_no_ccti.sbatch
 ```
 
-其 checkpoint 写入 `work/runs/no_ccti_seed17_64/`，与 learned CCTI 结果隔离。
+其 checkpoint 写入 `work/runs/no_ccti_seed17_patch128/`，与 learned CCTI 结果隔离。
