@@ -15,7 +15,8 @@ set -euo pipefail
 MEDVERSE_PROJECT_DIR=/home_data/home/wangyb12023/Medverse-PAOT2
 MEDVERSE_PYTHON=/home_data/home/wangyb12023/anaconda3/envs/renal/bin/python
 MEDVERSE_MANIFEST=${MEDVERSE_PROJECT_DIR}/work/paot2_icl_inspected.jsonl
-MEDVERSE_RUN_DIR=${MEDVERSE_PROJECT_DIR}/work/runs/no_ccti_seed17_patch128
+MEDVERSE_PRETRAINED=${MEDVERSE_PROJECT_DIR}/work/pretrained/Medverse.ckpt
+MEDVERSE_RUN_DIR=${MEDVERSE_PROJECT_DIR}/work/runs/pretrained_no_ccti_seed17
 
 cd "${MEDVERSE_PROJECT_DIR}"
 export PYTHONUNBUFFERED=1
@@ -33,18 +34,24 @@ nvidia-smi
   --output-dir "${MEDVERSE_RUN_DIR}" \
   --image-size 128 \
   --target-spacing 2.0,2.0,3.0 \
-  --positive-patch-probability 0.7 \
+  --positive-patch-probability 1.0 \
   --positive-weight 8 \
+  --loss-mode smoothl3_dice \
+  --prediction-mode regression \
   --val-overlap 0.5 \
   --val-cases-per-task 20 \
-  --channels 8,16,32,64,128 \
+  --channels 32,64,128,256,512 \
   --conv-layers 2 \
-  --num-context 1 \
+  --num-context 2 \
   --batch-size 1 \
   --workers 4 \
   --epochs 5 \
+  --pretrained "${MEDVERSE_PRETRAINED}" \
+  --freeze-backbone-epochs 1 \
+  --unfreeze-scope decoder \
   --lr 1e-4 \
-  --weight-decay 1e-5 \
+  --unfreeze-lr 3e-5 \
+  --weight-decay 0 \
   --disable-ccti \
   --seed 17 \
   --device cuda

@@ -30,21 +30,50 @@ def seed_everything(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-def dice_loss(logits: torch.Tensor, target: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
-    probability = torch.sigmoid(logits)
+def prediction_probability(output: torch.Tensor, prediction_mode: str) -> torch.Tensor:
+    return torch.sigmoid(output) if prediction_mode == "logits" else output.clamp(0.0, 1.0)
+
+
+def dice_loss(
+    output: torch.Tensor, target: torch.Tensor, prediction_mode: str = "logits", eps: float = 1e-5
+) -> torch.Tensor:
+    probability = prediction_probability(output, prediction_mode)
     dims = tuple(range(1, probability.ndim))
     intersection = (probability * target).sum(dims)
     denominator = probability.sum(dims) + target.sum(dims)
     return (1.0 - (2.0 * intersection + eps) / (denominator + eps)).mean()
 
 
-def segmentation_loss(logits: torch.Tensor, target: torch.Tensor, positive_weight: float = 8.0) -> torch.Tensor:
-    pos_weight = torch.as_tensor(positive_weight, device=logits.device, dtype=logits.dtype)
-    return F.binary_cross_entropy_with_logits(logits, target, pos_weight=pos_weight) + dice_loss(logits, target)
+def smooth_l3_l1(output: torch.Tensor, target: torch.Tensor, beta: float = 1.0) -> torch.Tensor:
+    error = torch.abs(output - target)
+    return torch.where(
+        error < beta,
+        0.333 * error.pow(3) / beta**2,
+        error + 0.333 * beta**3 - beta,
+    ).mean()
 
 
-def hard_dice(logits: torch.Tensor, target: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
-    prediction = torch.sigmoid(logits) >= 0.5
+def segmentation_loss(
+    output: torch.Tensor, target: torch.Tensor, positive_weight: float = 8.0,
+    loss_mode: str = "bce_dice", prediction_mode: str = "logits",
+) -> torch.Tensor:
+    if loss_mode == "bce_dice":
+        pos_weight = torch.as_tensor(positive_weight, device=output.device, dtype=output.dtype)
+        return F.binary_cross_entropy_with_logits(output, target, pos_weight=pos_weight) + dice_loss(
+            output, target, prediction_mode
+        )
+    original = 50.0 * smooth_l3_l1(output, target)
+    if loss_mode == "smoothl3":
+        return original
+    if loss_mode == "smoothl3_dice":
+        return original + dice_loss(output, target, prediction_mode)
+    raise ValueError(f"unknown loss mode: {loss_mode}")
+
+
+def hard_dice(
+    output: torch.Tensor, target: torch.Tensor, prediction_mode: str = "logits", eps: float = 1e-5
+) -> torch.Tensor:
+    prediction = prediction_probability(output, prediction_mode) >= 0.5
     truth = target >= 0.5
     dims = tuple(range(1, prediction.ndim))
     intersection = (prediction & truth).sum(dims).float()
@@ -89,8 +118,8 @@ def move_batch(batch: dict, device: torch.device) -> tuple[torch.Tensor, ...]:
     )
 
 
-def load_weights(model: torch.nn.Module, path: Path, strict: bool) -> None:
-    payload = torch.load(path, map_location="cpu")
+def load_weights(model: torch.nn.Module, path: Path, strict: bool) -> dict[str, int]:
+    payload = torch.load(path, map_location="cpu", weights_only=True)
     state = payload.get("model", payload.get("state_dict", payload))
     normalized = {}
     for key, value in state.items():
@@ -100,7 +129,7 @@ def load_weights(model: torch.nn.Module, path: Path, strict: bool) -> None:
         normalized[key] = value
     if strict:
         model.load_state_dict(normalized, strict=True)
-        return
+        return {"loaded_tensors": len(normalized), "missing_tensors": 0, "unexpected_tensors": 0}
     current = model.state_dict()
     compatible = {key: value for key, value in normalized.items() if key in current and current[key].shape == value.shape}
     result = model.load_state_dict(compatible, strict=False)
@@ -113,12 +142,38 @@ def load_weights(model: torch.nn.Module, path: Path, strict: bool) -> None:
             }
         )
     )
+    return {
+        "loaded_tensors": len(compatible),
+        "missing_tensors": len(result.missing_keys),
+        "unexpected_tensors": len(result.unexpected_keys),
+    }
+
+
+def set_trainable_scope(model: torch.nn.Module, scope: str) -> dict[str, int]:
+    """Freeze pretrained weights while keeping the experiment heads trainable."""
+    for name, parameter in model.named_parameters():
+        if scope == "heads":
+            parameter.requires_grad = (
+                name.startswith("target_decoder.ccti_blocks")
+                or name.startswith("target_decoder.output_block")
+            )
+        elif scope == "decoder":
+            parameter.requires_grad = name.startswith("target_decoder")
+        elif scope == "all":
+            parameter.requires_grad = True
+        else:
+            raise ValueError(f"unknown trainable scope: {scope}")
+    return {
+        "trainable_parameters": sum(p.numel() for p in model.parameters() if p.requires_grad),
+        "total_parameters": sum(p.numel() for p in model.parameters()),
+    }
 
 
 @torch.no_grad()
 def evaluate(
     model, loader, device, context_chunk: int, patch_size: int, overlap: float,
-    positive_weight: float, max_steps: int | None = None, log_every: int = 20,
+    positive_weight: float, loss_mode: str, prediction_mode: str,
+    max_steps: int | None = None, log_every: int = 20,
 ) -> dict:
     model.eval()
     by_task: dict[str, list[float]] = defaultdict(list)
@@ -131,10 +186,12 @@ def evaluate(
         logits = sliding_window_logits(
             model, target_in, context_in, context_out, patch_size, overlap, context_chunk
         )
-        losses.append(float(segmentation_loss(logits, target_out, positive_weight)))
+        losses.append(float(segmentation_loss(
+            logits, target_out, positive_weight, loss_mode, prediction_mode
+        )))
         foreground = target_out.flatten(1).sum(1) > 0
-        scores = hard_dice(logits, target_out).cpu().tolist()
-        predictions = (torch.sigmoid(logits) >= 0.5).flatten(1)
+        scores = hard_dice(logits, target_out, prediction_mode).cpu().tolist()
+        predictions = (prediction_probability(logits, prediction_mode) >= 0.5).flatten(1)
         for task, score, is_positive, prediction in zip(batch["target_region"], scores, foreground.tolist(), predictions):
             if is_positive:
                 by_task[task].append(score)
@@ -169,6 +226,10 @@ def main() -> None:
     parser.add_argument("--target-spacing", default="2.0,2.0,3.0")
     parser.add_argument("--positive-patch-probability", type=float, default=0.7)
     parser.add_argument("--positive-weight", type=float, default=8.0)
+    parser.add_argument(
+        "--loss-mode", choices=("bce_dice", "smoothl3", "smoothl3_dice"), default="bce_dice"
+    )
+    parser.add_argument("--prediction-mode", choices=("logits", "regression"), default="logits")
     parser.add_argument("--val-overlap", type=float, default=0.5)
     parser.add_argument("--val-cases-per-task", type=int, default=20)
     parser.add_argument("--disable-task-balancing", action="store_true")
@@ -180,6 +241,15 @@ def main() -> None:
     parser.add_argument("--disable-ccti", action="store_true")
     parser.add_argument("--seed", type=int, default=17)
     parser.add_argument("--pretrained", type=Path)
+    parser.add_argument(
+        "--freeze-backbone-epochs", type=int, default=0,
+        help="Train only CCTI/output heads for this many initial epochs.",
+    )
+    parser.add_argument(
+        "--unfreeze-scope", choices=("decoder", "all"), default="decoder",
+        help="Parameters to train after the frozen-head warm-up.",
+    )
+    parser.add_argument("--unfreeze-lr", type=float, default=3e-5)
     parser.add_argument("--checkpoint", type=Path, help="Strictly load an MVP checkpoint.")
     parser.add_argument("--eval-only", action="store_true")
     parser.add_argument("--max-train-steps", type=int)
@@ -258,11 +328,16 @@ def main() -> None:
         ccti_mode=args.ccti_mode,
         ccti_channel_ratio=args.ccti_ratio,
     ).to(device)
+    pretrained_report = None
     if args.pretrained:
-        load_weights(model, args.pretrained, strict=False)
+        pretrained_report = load_weights(model, args.pretrained, strict=False)
+        if pretrained_report["loaded_tensors"] == 0:
+            raise RuntimeError("the pretrained checkpoint did not match any model tensors")
     if args.checkpoint:
         load_weights(model, args.checkpoint, strict=True)
 
+    initial_scope = "heads" if args.freeze_backbone_epochs > 0 else args.unfreeze_scope
+    parameter_report = set_trainable_scope(model, initial_scope)
     print(
         json.dumps(
             {
@@ -276,8 +351,14 @@ def main() -> None:
                 "target_spacing": target_spacing,
                 "positive_patch_probability": args.positive_patch_probability,
                 "positive_weight": args.positive_weight,
+                "loss_mode": args.loss_mode,
+                "prediction_mode": args.prediction_mode,
                 "task_balancing": sampler is not None,
                 "validation": "full_volume_sliding_window",
+                "pretrained": str(args.pretrained) if args.pretrained else None,
+                "pretrained_report": pretrained_report,
+                "trainable_scope": initial_scope,
+                **parameter_report,
             }
         )
     )
@@ -285,7 +366,8 @@ def main() -> None:
     if args.eval_only:
         print(json.dumps(evaluate(
             model, val_loader, device, context_chunk, args.image_size, args.val_overlap,
-            args.positive_weight, args.max_val_steps, args.log_every,
+            args.positive_weight, args.loss_mode, args.prediction_mode,
+            args.max_val_steps, args.log_every,
         ), indent=2))
         return
 
@@ -294,6 +376,17 @@ def main() -> None:
     scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
     best_macro_dice = -1.0
     for epoch in range(args.epochs):
+        if epoch == args.freeze_backbone_epochs and args.freeze_backbone_epochs > 0:
+            parameter_report = set_trainable_scope(model, args.unfreeze_scope)
+            for group in optimizer.param_groups:
+                group["lr"] = args.unfreeze_lr
+            print(json.dumps({
+                "epoch": epoch + 1,
+                "event": "unfreeze",
+                "trainable_scope": args.unfreeze_scope,
+                "learning_rate": args.unfreeze_lr,
+                **parameter_report,
+            }), flush=True)
         model.train()
         running_loss = []
         for step, batch in enumerate(train_loader):
@@ -303,7 +396,9 @@ def main() -> None:
             optimizer.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=amp_enabled):
                 logits = model(target_in, context_in, context_out, l=context_chunk)
-                loss = segmentation_loss(logits, target_out, args.positive_weight)
+                loss = segmentation_loss(
+                    logits, target_out, args.positive_weight, args.loss_mode, args.prediction_mode
+                )
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -323,7 +418,8 @@ def main() -> None:
 
         metrics = evaluate(
             model, val_loader, device, context_chunk, args.image_size, args.val_overlap,
-            args.positive_weight, args.max_val_steps, args.log_every,
+            args.positive_weight, args.loss_mode, args.prediction_mode,
+            args.max_val_steps, args.log_every,
         )
         report = {
             "epoch": epoch + 1,
@@ -336,7 +432,10 @@ def main() -> None:
             "optimizer": optimizer.state_dict(),
             "epoch": epoch + 1,
             "metrics": metrics,
-            "args": vars(args),
+            "args": {
+                key: str(value) if isinstance(value, Path) else value
+                for key, value in vars(args).items()
+            },
         }
         torch.save(checkpoint, args.output_dir / "last.pt")
         if metrics["macro_dice"] > best_macro_dice:
