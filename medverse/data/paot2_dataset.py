@@ -134,6 +134,9 @@ class PAOT2ICLDataset(Dataset):
         self.positive_probability, self.full_volume_target = positive_probability, full_volume_target
         self.data_root = Path(data_root) if data_root is not None else None
         self.seed = seed
+        self.rows_by_case_id = {row["case_id"]: row for row in rows}
+        if len(self.rows_by_case_id) != len(rows):
+            raise ValueError("manifest case_id values must be unique")
 
         pools: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for row in rows:
@@ -141,9 +144,29 @@ class PAOT2ICLDataset(Dataset):
                 pools[row["target_region"]].append(row)
         self.context_pools = dict(pools)
         for row in self.rows:
-            available = sum(candidate["patient_id"] != row["patient_id"] for candidate in self.context_pools.get(row["target_region"], []))
-            if available < num_context:
-                raise ValueError(f"{row['case_id']} has {available} contexts; need {num_context}")
+            fixed_ids = row.get("context_case_ids")
+            if fixed_ids is not None:
+                if len(fixed_ids) != num_context:
+                    raise ValueError(
+                        f"{row['case_id']} freezes {len(fixed_ids)} contexts; need {num_context}"
+                    )
+                missing = [case_id for case_id in fixed_ids if case_id not in self.rows_by_case_id]
+                if missing:
+                    raise ValueError(f"{row['case_id']} references missing contexts: {missing}")
+                fixed_rows = [self.rows_by_case_id[case_id] for case_id in fixed_ids]
+                invalid = [
+                    candidate["case_id"] for candidate in fixed_rows
+                    if candidate["split"] != context_split
+                    or candidate["target_region"] != row["target_region"]
+                    or candidate["patient_id"] == row["patient_id"]
+                    or candidate.get("foreground_voxels", 1) <= 0
+                ]
+                if invalid:
+                    raise ValueError(f"{row['case_id']} has invalid fixed contexts: {invalid}")
+            else:
+                available = sum(candidate["patient_id"] != row["patient_id"] for candidate in self.context_pools.get(row["target_region"], []))
+                if available < num_context:
+                    raise ValueError(f"{row['case_id']} has {available} contexts; need {num_context}")
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -162,8 +185,12 @@ class PAOT2ICLDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         target_row, rng = self.rows[index], self._rng(index)
-        candidates = [row for row in self.context_pools[target_row["target_region"]] if row["patient_id"] != target_row["patient_id"]]
-        context_rows = rng.sample(candidates, self.num_context)
+        fixed_ids = target_row.get("context_case_ids")
+        if fixed_ids is not None:
+            context_rows = [self.rows_by_case_id[case_id] for case_id in fixed_ids]
+        else:
+            candidates = [row for row in self.context_pools[target_row["target_region"]] if row["patient_id"] != target_row["patient_id"]]
+            context_rows = rng.sample(candidates, self.num_context)
         target_image, target_mask = load_ct_volume(target_row, self.data_root, self.target_spacing, self.hu_window)
         if not self.full_volume_target:
             positive = bool(target_mask.sum() > 0) and rng.random() < self.positive_probability

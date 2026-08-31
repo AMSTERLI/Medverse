@@ -7,7 +7,7 @@ try:
     import numpy as np
     import torch  # noqa: F401 - required by the dataset module
 
-    from medverse.data.paot2_dataset import _crop_or_pad, _load_aligned_pair
+    from medverse.data.paot2_dataset import PAOT2ICLDataset, _crop_or_pad, _load_aligned_pair
 
     HAS_DEPS = True
 except ImportError:
@@ -51,6 +51,35 @@ class PAOT2AlignmentTests(unittest.TestCase):
         patch = _crop_or_pad(volume, (0, 0, 0), 4)
         self.assertEqual(tuple(patch.shape), (1, 4, 4, 4))
         self.assertEqual(float(patch[0, 2, 2, 2]), 1.0)
+
+    def test_dataset_honors_frozen_context_case_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rows = []
+            for index in range(4):
+                image = np.full((4, 4, 4), index, dtype=np.float32)
+                mask = np.ones((4, 4, 4), dtype=np.int16)
+                image_path, mask_path = root / f"image{index}.nii.gz", root / f"mask{index}.nii.gz"
+                nib.save(nib.Nifti1Image(image, np.eye(4)), image_path)
+                nib.save(nib.Nifti1Image(mask, np.eye(4)), mask_path)
+                rows.append({
+                    "case_id": f"case{index}",
+                    "patient_id": f"patient{index}",
+                    "image": str(image_path),
+                    "mask": str(mask_path),
+                    "split": "val" if index == 0 else "train",
+                    "primary_organ": "liver",
+                    "target_region": "liver_tumor",
+                    "tumor_label_values": [1],
+                    "foreground_voxels": 64,
+                })
+            rows[0]["context_case_ids"] = ["case3", "case1"]
+            dataset = PAOT2ICLDataset(
+                rows, split="val", num_context=2, image_size=4,
+                target_spacing=(1.0, 1.0, 1.0), full_volume_target=False,
+            )
+            item = dataset[0]
+            self.assertEqual(item["context_ids"], ["case3", "case1"])
 
 
 if __name__ == "__main__":
