@@ -121,8 +121,12 @@ def main() -> None:
     parser.add_argument("--device", default="gpu")
     parser.add_argument("--max-cases", type=int)
     parser.add_argument("--max-cases-per-stratum", type=int)
+    parser.add_argument("--shard-count", type=int, default=1)
+    parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
+    if args.shard_count < 1 or not 0 <= args.shard_index < args.shard_count:
+        parser.error("require shard-count >= 1 and 0 <= shard-index < shard-count")
     args.output_root.mkdir(parents=True, exist_ok=True)
     (args.output_root / "tmp").mkdir(parents=True, exist_ok=True)
 
@@ -143,6 +147,7 @@ def main() -> None:
         items = [item for item in items if item[0] in selected_keys]
     if args.max_cases is not None:
         items = items[: args.max_cases]
+    items = [item for index, item in enumerate(items) if index % args.shard_count == args.shard_index]
 
     reports = []
     for index, (_, scan_rows) in enumerate(items, 1):
@@ -151,10 +156,17 @@ def main() -> None:
         print(json.dumps({"case": index, "total": len(items), "case_key": report["case_key"], "status": report["status"]}), flush=True)
     summary = {
         "scans": len(reports),
+        "shard_index": args.shard_index,
+        "shard_count": args.shard_count,
         "status": dict(__import__("collections").Counter(report["status"] for report in reports)),
         "failures": [report["case_key"] for report in reports if not report["status"].startswith(("pass", "skipped"))],
     }
-    (args.output_root / "totalseg_summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    summary_name = (
+        "totalseg_summary.json"
+        if args.shard_count == 1
+        else f"totalseg_summary.shard-{args.shard_index:02d}-of-{args.shard_count:02d}.json"
+    )
+    (args.output_root / summary_name).write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
     if summary["failures"]:
         raise SystemExit(1)

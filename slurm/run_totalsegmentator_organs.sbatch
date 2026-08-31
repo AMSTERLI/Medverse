@@ -30,6 +30,8 @@ if [[ -n "${MAX_CASES:-}" ]]; then ARGS+=(--max-cases "${MAX_CASES}"); fi
 if [[ -n "${MAX_CASES_PER_STRATUM:-}" ]]; then
   ARGS+=(--max-cases-per-stratum "${MAX_CASES_PER_STRATUM}")
 fi
+if [[ -n "${SHARD_COUNT:-}" ]]; then ARGS+=(--shard-count "${SHARD_COUNT}"); fi
+if [[ -n "${SHARD_INDEX:-}" ]]; then ARGS+=(--shard-index "${SHARD_INDEX}"); fi
 
 echo "job_id=${SLURM_JOB_ID} host=$(hostname) visible_gpu=${CUDA_VISIBLE_DEVICES:-unset}"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
