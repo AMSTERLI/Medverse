@@ -151,11 +151,34 @@ def resolve_organ_mask(row: dict[str, Any], totalseg_root: Path | None, allow_le
             return candidate
     if not allow_legacy:
         return None
-    candidate = Path(str(row.get("organ_mask", "")))
-    if not candidate.is_file():
+    candidate = resolve_roi(row)
+    if candidate is None:
         return None
     # The legacy MSWAL pipeline reused one generic mask for different organs.
     if row["source_dataset"] == "MSWAL" and candidate.parent.name == "organ":
+        return None
+    return candidate
+
+
+def resolve_roi(row: dict[str, Any]) -> Path | None:
+    """Resolve an explicitly supplied or legacy adjacent organ ROI.
+
+    This compatibility helper is deliberately used only when
+    ``--allow-legacy-organ-masks`` is set. The formal experiment requires the
+    task-specific masks produced below ``--totalseg-root``.
+    """
+    explicit = str(row.get("organ_mask", ""))
+    candidate = Path(explicit) if explicit else None
+    if candidate is not None and candidate.is_file():
+        return candidate
+    image = Path(str(row["image"]))
+    filename = image.name
+    if filename.endswith("_0000.nii.gz"):
+        filename = filename[: -len("_0000.nii.gz")] + ".nii.gz"
+    elif filename.endswith("_0000.nii"):
+        filename = filename[: -len("_0000.nii")] + ".nii"
+    candidate = image.parent.parent / "organTr" / filename
+    if not candidate.is_file():
         return None
     return candidate
 
@@ -174,11 +197,18 @@ def freeze_contexts(rows: list[dict[str, Any]], k: int, seed: int) -> None:
         row["context_case_ids"] = [candidate["case_id"] for candidate in candidates[:k]]
 
 
-def validate(rows: list[dict[str, Any]], require_audit: bool) -> None:
+def validate_no_patient_leakage(rows: list[dict[str, Any]]) -> None:
     membership: dict[str, set[str]] = defaultdict(set)
-    lookup = {row["case_id"]: row for row in rows}
     for row in rows:
         membership[group_key(row)].add(row["split"])
+    leaking = {key: value for key, value in membership.items() if len(value) != 1}
+    if leaking:
+        raise ValueError(f"patient leakage across splits: {list(leaking.items())[:5]}")
+
+
+def validate(rows: list[dict[str, Any]], require_audit: bool) -> None:
+    lookup = {row["case_id"]: row for row in rows}
+    for row in rows:
         if require_audit and not row.get("label_mapping_audited"):
             raise ValueError(f"{row['case_id']}: missing label audit")
         for context_id in row["context_case_ids"]:
@@ -187,9 +217,7 @@ def validate(rows: list[dict[str, Any]], require_audit: bool) -> None:
                 raise ValueError(f"{row['case_id']}: invalid context {context_id}")
             if group_key(context) == group_key(row) or int(context.get("foreground_voxels", 0)) <= 0:
                 raise ValueError(f"{row['case_id']}: leaking or empty context {context_id}")
-    leaking = {key: value for key, value in membership.items() if len(value) != 1}
-    if leaking:
-        raise ValueError(f"patient leakage across splits: {list(leaking.items())[:5]}")
+    validate_no_patient_leakage(rows)
 
 
 def main() -> None:

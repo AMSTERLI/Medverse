@@ -91,8 +91,20 @@ def maximum_3d_diameter_mm(mask: np.ndarray, affine: np.ndarray) -> tuple[float,
         return float(np.linalg.norm(extent)), "physical_bbox_diagonal_fallback"
 
 
-def process_one(payload: tuple[dict[str, Any], str, float]) -> dict[str, Any]:
-    row, output_root_raw, margin_mm = payload
+def process_one(payload: tuple[Any, ...]) -> dict[str, Any]:
+    """Materialize one case while accepting the pre-v1 compatibility tuple.
+
+    Older callers passed target spacing, margin and HU window. Resampling and
+    intensity normalization are now intentionally deferred to the shared
+    nnU-Net fingerprint/preprocessing stage, so only the legacy margin value is
+    retained from that tuple.
+    """
+    if len(payload) == 3:
+        row, output_root_raw, margin_mm = payload
+    elif len(payload) == 5:
+        row, output_root_raw, _legacy_spacing, margin_mm, _legacy_hu_window = payload
+    else:
+        raise ValueError(f"expected a 3- or 5-item process payload, got {len(payload)}")
     output_root = Path(output_root_raw)
     name = safe_case_name(row)
     full_tumor_path = output_root / "tumor_masks" / f"{name}.nii.gz"
@@ -116,7 +128,8 @@ def process_one(payload: tuple[dict[str, Any], str, float]) -> dict[str, Any]:
     coverage = 1.0 if tumor_total == 0 else tumor_inside / tumor_total
     voxel_volume = float(abs(np.linalg.det(affine[:3, :3])))
     organ_volume = float(organ.sum() * voxel_volume)
-    abnormal_threshold = 200_000.0 if row["primary_organ"] == "liver" else 30_000.0
+    primary_organ = row.get("primary_organ", str(row["target_region"]).removesuffix("_tumor"))
+    abnormal_threshold = 200_000.0 if primary_organ == "liver" else 30_000.0
     qc_flags: list[str] = []
     if organ_volume < abnormal_threshold:
         qc_flags.append("organ_volume_abnormally_small")
@@ -157,6 +170,7 @@ def process_one(payload: tuple[dict[str, Any], str, float]) -> dict[str, Any]:
     updated.update({
         "source_image": row["image"], "source_mask": row["mask"],
         "source_organ_mask": row["organ_mask"], "tumor_mask": str(full_tumor_path),
+        "image": str(roi_image_path), "mask": str(roi_tumor_path),
         "roi_image": str(roi_image_path), "roi_tumor_mask": str(roi_tumor_path),
         "roi_organ_mask": str(roi_organ_path), "geometry_metadata": str(metadata_path),
         "tumor_label_values_source": list(row["tumor_label_values"]), "tumor_label_values": [1],
