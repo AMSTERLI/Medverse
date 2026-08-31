@@ -22,13 +22,14 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--roi-predictions", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--split", default="test")
     args = parser.parse_args()
     case_identifier = load_function(Path(__file__).with_name("export_nnunetv2_dataset.py"), "case_identifier")
     restore = load_function(Path(__file__).with_name("restore_roi_prediction.py"), "restore")
     rows = [json.loads(line) for line in args.manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
     records = []
     for row in rows:
-        if row["split"] != "test":
+        if row["split"] != args.split:
             continue
         roi_prediction = args.roi_predictions / f"{case_identifier(row)}.nii.gz"
         if not roi_prediction.is_file():

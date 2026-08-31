@@ -171,8 +171,9 @@ def main() -> None:
     parser.add_argument("--comparison-predictions", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--nsd-tolerance-mm", type=float, default=2.0)
+    parser.add_argument("--split", default="test")
     args = parser.parse_args()
-    manifest = [row for row in load_jsonl(args.manifest) if row["split"] == "test"]
+    manifest = [row for row in load_jsonl(args.manifest) if row["split"] == args.split]
     predictions = prediction_lookup(args.predictions)
     rows = [evaluate_case(row, predictions[row["case_id"]], args.nsd_tolerance_mm) for row in manifest]
     args.output_dir.mkdir(parents=True, exist_ok=True)
