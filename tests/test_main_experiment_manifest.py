@@ -25,6 +25,13 @@ def make_row(source: str, task: str, patient: str, case: str) -> dict:
 
 
 class MainExperimentManifestTests(unittest.TestCase):
+    def test_curated_binary_mask_mapping_and_case_id_are_preserved(self):
+        row = make_row("LiTS", "liver_tumor", "lits:0", "lits:lits_0:liver_tumor")
+        row["tumor_label_values"] = [1]
+        normalized = MODULE.normalize_scope([row])[0]
+        self.assertEqual(normalized["case_id"], row["case_id"])
+        self.assertEqual(normalized["tumor_label_values"], [1])
+
     def test_grouped_split_is_deterministic_and_patient_safe(self):
         rows = []
         for source in ("a", "b"):

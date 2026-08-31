@@ -72,9 +72,11 @@ def normalize_scope(input_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         row["source_dataset"] = source
         row["source_case_id"] = str(row.get("source_case_id", row["patient_id"]))
         row["study_id"] = str(row.get("study_id", row["patient_id"]))
-        row["case_id"] = f"{source}:{row['patient_id']}:{task}"
+        row["case_id"] = str(row.get("case_id") or f"{source}:{row['patient_id']}:{task}")
         row["primary_organ"] = contract["primary_organ"]
-        row["tumor_label_values"] = list(contract["tumor_labels"])
+        # Curated manifests may already point to a binary derived tumor mask.
+        # Keep that explicit mapping instead of reverting to the raw-source labels.
+        row["tumor_label_values"] = list(row.get("tumor_label_values") or contract["tumor_labels"])
         row["modality"] = "CT"
         row.setdefault("phase_or_sequence", "unknown_ct_phase")
         row.setdefault("annotation_protocol", f"{source}_official_segmentation")
@@ -95,7 +97,11 @@ def inspect_label(row: dict[str, Any]) -> None:
     if not np.isfinite(values).all() or not np.allclose(values, np.rint(values)) or np.any(values < 0):
         raise ValueError(f"{row['case_id']}: labels must be finite non-negative integers")
     integer_values = {int(v) for v in values.tolist()}
-    allowed = TASK_CONTRACT[(row["source_dataset"], row["target_region"])]["allowed_labels"]
+    allowed = (
+        {0, 1}
+        if row["tumor_label_values"] == [1]
+        else TASK_CONTRACT[(row["source_dataset"], row["target_region"])]["allowed_labels"]
+    )
     if allowed is not None and not integer_values <= allowed:
         raise ValueError(f"{row['case_id']}: unexpected label values {sorted(integer_values - allowed)}")
     count_by_value = {int(v): int(n) for v, n in zip(values.tolist(), counts.tolist())}
@@ -229,6 +235,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=20260831)
     parser.add_argument("--context-k", type=int, default=3)
     parser.add_argument("--inspect-labels", action="store_true")
+    parser.add_argument("--preserve-existing-split", action="store_true")
     parser.add_argument("--allow-legacy-organ-masks", action="store_true")
     parser.add_argument("--allow-missing-roi", action="store_true")
     args = parser.parse_args()
@@ -240,7 +247,18 @@ def main() -> None:
     elif any("foreground_voxels" not in row for row in rows):
         raise ValueError("foreground_voxels missing; rerun with --inspect-labels")
 
-    assignments = assign_grouped_stratified_split(rows, args.seed)
+    if args.preserve_existing_split:
+        assignments: dict[str, str] = {}
+        for row in rows:
+            split = str(row.get("split", ""))
+            if split not in SPLITS:
+                raise ValueError(f"{row['case_id']}: invalid existing split {split!r}")
+            key = group_key(row)
+            if key in assignments and assignments[key] != split:
+                raise ValueError(f"{key}: patient appears in multiple existing splits")
+            assignments[key] = split
+    else:
+        assignments = assign_grouped_stratified_split(rows, args.seed)
     missing_roi: list[str] = []
     for row in rows:
         row["legacy_split"] = row.get("split")
@@ -266,6 +284,7 @@ def main() -> None:
     strata = Counter((row["split"], row["source_dataset"], row["target_region"]) for row in rows)
     summary = {
         "input": str(args.input), "output": str(args.output), "seed": args.seed,
+        "split_method": "preserve_existing" if args.preserve_existing_split else "grouped_stratified",
         "context_k": args.context_k, "context_strategy": "random_same_task",
         "rows": len(rows), "patients": len({group_key(row) for row in rows}),
         "missing_roi": len(missing_roi), "label_mapping_audited": args.inspect_labels,

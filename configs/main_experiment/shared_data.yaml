@@ -1,9 +1,12 @@
 experiment: pan_cancer_two_model_main
+source_manifest: data/manifests/kits23_lits_mswal_tumor_v1.jsonl
+fixed_liver_kidney_manifest: work/manifests/kits23_lits_mswal_liver_kidney_fixed.jsonl
+roi_manifest: work/data/kits23_lits_mswal_liver_kidney_v1/manifests/roi_manifest.jsonl
 scope:
   datasets: [LiTS, KiTS23, MSWAL]
   tasks: [liver_tumor, kidney_tumor]
 split:
-  method: grouped_stratified
+  method: fixed_manifest_split
   group_key: source_dataset_and_patient_id
   ratios: [0.70, 0.10, 0.20]
   seed: 20260831
@@ -20,10 +23,7 @@ labels:
   background: 0
   tumor: 1
   mappings:
-    LiTS_liver_tumor: [2]
-    KiTS23_kidney_tumor: [2]
-    MSWAL_liver_tumor: [3]
-    MSWAL_kidney_tumor: [4]
+    curated_binary_tumor_masks: [1]
   kits23_cyst_label_excluded: 3
 input_channels:
   0: CT

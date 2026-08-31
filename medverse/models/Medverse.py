@@ -94,6 +94,12 @@ class Medverse(nn.Module):
         
     def fuse_feature(self, Features, features, Weight, weight = 1):
         # Fuse the context features into mean context features.
+        if Weight == 0:
+            return list(features), weight
+        if len(Features) != len(features):
+            raise ValueError(
+                f"context feature stage mismatch: accumulated={len(Features)} new={len(features)}"
+            )
         ori_context_weight = Weight/(Weight+weight)
         new_context_weight = weight/(Weight+weight)
         for ind in range(len(Features)):
@@ -113,7 +119,7 @@ class Medverse(nn.Module):
         # Context processing.
         # initialize vars
         Weight = 0
-        context_features_mean = [0, 0, 0, 0, 0]
+        context_features_mean = []
         
         # Shuffle mini-context
         context_partition = [(i*l, min(i*l+l,context_in.shape[1])) for i in range(math.ceil(context_in.shape[1]/l))]
