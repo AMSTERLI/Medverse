@@ -219,6 +219,7 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("runs/paot2_ccti"))
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--gradient-accumulation", type=int, default=1)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-5)
@@ -259,6 +260,10 @@ def main() -> None:
     )
     parser.add_argument("--unfreeze-lr", type=float, default=3e-5)
     parser.add_argument("--checkpoint", type=Path, help="Strictly load an MVP checkpoint.")
+    parser.add_argument(
+        "--resume", type=Path,
+        help="Resume model, optimizer, scaler and epoch from a training checkpoint.",
+    )
     parser.add_argument("--eval-only", action="store_true")
     parser.add_argument("--max-train-steps", type=int)
     parser.add_argument("--max-val-steps", type=int)
@@ -271,9 +276,13 @@ def main() -> None:
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--no-amp", action="store_true")
     args = parser.parse_args()
+    if args.checkpoint and args.resume:
+        parser.error("--checkpoint and --resume are mutually exclusive")
 
     if args.image_size % 16 or args.image_size % 4:
         raise ValueError("--image-size must be divisible by both 16 and patch_num=4")
+    if args.gradient_accumulation < 1:
+        raise ValueError("--gradient-accumulation must be at least one")
     target_spacing = tuple(float(value) for value in args.target_spacing.split(","))
     if len(target_spacing) != 3 or any(value <= 0 for value in target_spacing):
         raise ValueError("--target-spacing must contain three positive comma-separated values")
@@ -342,10 +351,16 @@ def main() -> None:
         pretrained_report = load_weights(model, args.pretrained, strict=False)
         if pretrained_report["loaded_tensors"] == 0:
             raise RuntimeError("the pretrained checkpoint did not match any model tensors")
+    resume_payload = None
     if args.checkpoint:
         load_weights(model, args.checkpoint, strict=True)
+    if args.resume:
+        resume_payload = torch.load(args.resume, map_location="cpu", weights_only=True)
+        state = resume_payload.get("model", resume_payload.get("state_dict", resume_payload))
+        model.load_state_dict(state, strict=True)
 
-    initial_scope = "heads" if args.freeze_backbone_epochs > 0 else args.unfreeze_scope
+    start_epoch = int(resume_payload.get("epoch", 0)) if resume_payload else 0
+    initial_scope = "heads" if start_epoch < args.freeze_backbone_epochs else args.unfreeze_scope
     parameter_report = set_trainable_scope(model, initial_scope)
     print(
         json.dumps(
@@ -360,6 +375,7 @@ def main() -> None:
                 "target_spacing": target_spacing,
                 "positive_patch_probability": args.positive_patch_probability,
                 "positive_weight": args.positive_weight,
+                "gradient_accumulation": args.gradient_accumulation,
                 "loss_mode": args.loss_mode,
                 "prediction_mode": args.prediction_mode,
                 "task_balancing": sampler is not None,
@@ -368,6 +384,8 @@ def main() -> None:
                 ),
                 "pretrained": str(args.pretrained) if args.pretrained else None,
                 "pretrained_report": pretrained_report,
+                "resume": str(args.resume) if args.resume else None,
+                "start_epoch": start_epoch,
                 "trainable_scope": initial_scope,
                 **parameter_report,
             }
@@ -385,8 +403,17 @@ def main() -> None:
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     amp_enabled = device.type == "cuda" and not args.no_amp
     scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
-    best_macro_dice = -1.0
-    for epoch in range(args.epochs):
+    if resume_payload:
+        if "optimizer" not in resume_payload:
+            raise ValueError("resume checkpoint has no optimizer state")
+        optimizer.load_state_dict(resume_payload["optimizer"])
+        if "scaler" in resume_payload:
+            scaler.load_state_dict(resume_payload["scaler"])
+    best_macro_dice = (
+        float(resume_payload.get("metrics", {}).get("macro_dice", -1.0))
+        if resume_payload else -1.0
+    )
+    for epoch in range(start_epoch, args.epochs):
         if epoch == args.freeze_backbone_epochs and args.freeze_backbone_epochs > 0:
             parameter_report = set_trainable_scope(model, args.unfreeze_scope)
             for group in optimizer.param_groups:
@@ -400,19 +427,28 @@ def main() -> None:
             }), flush=True)
         model.train()
         running_loss = []
+        optimizer.zero_grad(set_to_none=True)
+        steps_this_epoch = len(train_loader)
+        if args.max_train_steps is not None:
+            steps_this_epoch = min(steps_this_epoch, args.max_train_steps)
         for step, batch in enumerate(train_loader):
             if args.max_train_steps is not None and step >= args.max_train_steps:
                 break
             target_in, target_out, context_in, context_out = move_batch(batch, device)
-            optimizer.zero_grad(set_to_none=True)
             with torch.cuda.amp.autocast(enabled=amp_enabled):
                 logits = model(target_in, context_in, context_out, l=context_chunk)
                 loss = segmentation_loss(
                     logits, target_out, args.positive_weight, args.loss_mode, args.prediction_mode
                 )
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            scaler.scale(loss / args.gradient_accumulation).backward()
+            should_step = (
+                (step + 1) % args.gradient_accumulation == 0
+                or step + 1 == steps_this_epoch
+            )
+            if should_step:
+                scaler.step(optimizer)
+                scaler.update()
+                optimizer.zero_grad(set_to_none=True)
             running_loss.append(float(loss.detach()))
             if args.log_every > 0 and (step + 1) % args.log_every == 0:
                 print(
@@ -441,6 +477,7 @@ def main() -> None:
         checkpoint = {
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
+            "scaler": scaler.state_dict(),
             "epoch": epoch + 1,
             "metrics": metrics,
             "args": {

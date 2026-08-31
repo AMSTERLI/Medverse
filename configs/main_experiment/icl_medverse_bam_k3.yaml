@@ -1,0 +1,16 @@
+name: icl_medverse_bam_k3
+model: PanCancerMedverse
+pretrained: work/pretrained/Medverse.ckpt
+bam: original
+ccti: disabled
+context:
+  count: 3
+  selection: fixed_same_task_same_source_preferred
+  adaptive_chunk_size: 2
+patch_size: [128, 128, 128]
+amp: true
+physical_batch_size: 1
+gradient_accumulation: 2
+gpu_slot: 1
+output_dir: work/experiments/icl_medverse_bam_k3
+formal_training_gate: overfit_2_to_4_cases_must_pass

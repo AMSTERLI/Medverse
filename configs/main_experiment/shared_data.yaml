@@ -1,0 +1,18 @@
+experiment: pan_cancer_two_model_main
+split:
+  method: grouped_stratified
+  group_key: source_dataset_and_patient_id
+  ratios: [0.70, 0.10, 0.20]
+  seed: 20260831
+roi:
+  source: precomputed_TotalSegmentator
+  margin_mm: 30
+  spacing_mm: [1.5, 1.5, 2.0]
+  hu_window: [-1000, 1000]
+labels:
+  background: 0
+  tumor: 1
+rules:
+  identical_cases_between_models: true
+  identical_roi_spacing_labels_and_test: true
+  five_fold_enabled: false
