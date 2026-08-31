@@ -1,11 +1,13 @@
 # Validated on CentOS 7, Python 3.10.18 and CUDA 12.1. This supplements the
 # upstream requirements; install a CUDA-compatible PyTorch build separately.
-nnunetv2==2.5.2
+# nnU-Net v2 2.8.1 is required by TotalSegmentator 2.18.0: older 2.5.x builds
+# do not expose the data_loader module imported by this TotalSegmentator release.
+nnunetv2==2.8.1
 TotalSegmentator==2.18.0
 acvl-utils==0.2.6
-dynamic-network-architectures==0.3.1
+dynamic-network-architectures==0.4.4
 batchgenerators==0.25.1
-batchgeneratorsv2==0.3.0
+batchgeneratorsv2==0.3.5
 connected-components-3d==3.24.0
 blosc2==3.3.4
 ndindex==1.9.2
@@ -16,3 +18,4 @@ numpy>=1.24
 scipy>=1.11
 scikit-image>=0.19.3
 pytest>=8
+timm==1.0.22
