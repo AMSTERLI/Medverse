@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_DIR=${MEDVERSE_PROJECT_DIR:-/home_data/home/wangyb12023/Medverse-PAOT2}
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_DIR=${MEDVERSE_PROJECT_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}
 RUN_TARGET=${1:-both}
 NO_ICL_MODE=${NO_ICL_MODE:-start}
 ICL_MODE=${ICL_MODE:-start}
@@ -30,7 +31,7 @@ fi
 
 mapfile -t GPU_LINES < <(nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader,nounits)
 REQUIRED=2
-[[ "${RUN_TARGET}" == "both" ]] || REQUIRED=1
+[[ "${RUN_TARGET}" == "no-icl" ]] && REQUIRED=1
 if (( ${#GPU_LINES[@]} < REQUIRED )); then
   echo "need ${REQUIRED} visible GPUs, found ${#GPU_LINES[@]}" >&2
   exit 3
@@ -68,9 +69,7 @@ if [[ "${RUN_TARGET}" == "both" || "${RUN_TARGET}" == "no-icl" ]]; then
   start_arm no_icl 0 "${NO_ICL_MODE}" scripts/train_no_icl_nnunet.sh "${NO_ICL_DIR}"
 fi
 if [[ "${RUN_TARGET}" == "both" || "${RUN_TARGET}" == "icl" ]]; then
-  ICL_GPU=1
-  [[ "${RUN_TARGET}" == "both" ]] || ICL_GPU=0
-  start_arm icl_bam_k3 "${ICL_GPU}" "${ICL_MODE}" scripts/train_icl_medverse_bam_k3.sh "${ICL_DIR}"
+  start_arm icl_bam_k3 1 "${ICL_MODE}" scripts/train_icl_medverse_bam_k3.sh "${ICL_DIR}"
 fi
 
 STATUS=0

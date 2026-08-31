@@ -1,17 +1,16 @@
-name: icl_medverse_bam_k3
+name: liver_kidney_icl_bam_random_k3
 model: PanCancerMedverse
 pretrained: work/pretrained/Medverse.ckpt
+input_channels: [CT, TotalSegmentator_organ_mask]
+spacing_source: work/experiments/nnunet_plan_snapshot.json
+patch_size: [128, 128, 128]
 bam: original
 ccti: disabled
 context:
+  strategy: random_same_task
   count: 3
-  selection: random_same_task
-  frozen_offline: true
   bank_split: train
-  adaptive_chunk_size: 2
-input_channels: [CT, TotalSegmentator_organ_mask]
-patch_size: [128, 128, 128]
-spacing_source: work/experiments/nnunet_plan_snapshot.json
+  frozen_offline: true
 amp: true
 physical_batch_size: 1
 gradient_accumulation: 2

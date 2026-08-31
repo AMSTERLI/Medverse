@@ -1,12 +1,12 @@
-name: no_icl_nnunet
+name: liver_kidney_no_icl_nnunet
 model: nnUNet_v2
 configuration: 3d_fullres
 dataset_id: 501
 fold: 0
-context: disabled
 input_channels: [CT, TotalSegmentator_organ_mask]
 spacing_and_patch_policy: nnunetv2_planner
-amp: true
+context: disabled
+ccti: disabled
 gpu_slot: 0
 output_dir: work/experiments/no_icl_nnunet
 formal_training_gate: overfit_2_to_4_cases_must_pass

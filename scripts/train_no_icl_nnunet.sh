@@ -2,7 +2,8 @@
 set -euo pipefail
 
 MODE=${1:-start}
-PROJECT_DIR=${MEDVERSE_PROJECT_DIR:-/home_data/home/wangyb12023/Medverse-PAOT2}
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PROJECT_DIR=${MEDVERSE_PROJECT_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}
 EXPERIMENT_DIR=${NO_ICL_EXPERIMENT_DIR:-${PROJECT_DIR}/work/experiments/no_icl_nnunet}
 NNUNET_STORAGE=${NNUNET_STORAGE:-${PROJECT_DIR}/work/experiments/nnunet_storage}
 DATASET_ID=${NNUNET_DATASET_ID:-501}

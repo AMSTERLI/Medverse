@@ -1,0 +1,8 @@
+name: liver_kidney_icl_bam_retrieval_k3
+inherits: configs/liver_kidney_icl_bam_random.yaml
+context:
+  strategy: retrieval_same_task
+  count: 3
+  query_inputs: [CT, TotalSegmentator_organ_mask]
+  target_mask_forbidden: true
+first_round_enabled: false

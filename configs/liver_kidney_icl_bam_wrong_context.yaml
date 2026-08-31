@@ -1,0 +1,7 @@
+name: liver_kidney_icl_bam_wrong_context_k3
+inherits: configs/liver_kidney_icl_bam_random.yaml
+context:
+  strategy: wrong_task
+  count: 3
+  diagnostic_only: true
+first_round_enabled: false

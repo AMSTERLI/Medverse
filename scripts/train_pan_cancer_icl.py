@@ -118,7 +118,23 @@ def move_batch(batch: dict, device: torch.device) -> tuple[torch.Tensor, ...]:
     )
 
 
-def load_weights(model: torch.nn.Module, path: Path, strict: bool) -> dict[str, int]:
+def _migrate_organ_input_weight(key: str, saved: torch.Tensor, current: torch.Tensor) -> torch.Tensor | None:
+    """Add a zero-initialized organ channel without changing pretrained CT/mask behavior."""
+    if saved.ndim < 2 or current.ndim != saved.ndim or saved.shape[0] != current.shape[0] or saved.shape[2:] != current.shape[2:]:
+        return None
+    migrated = torch.zeros_like(current)
+    if key == "target_encoder.target_embedding.weight" and saved.shape[1] == 1 and current.shape[1] == 2:
+        migrated[:, 0] = saved[:, 0]
+        return migrated
+    if key == "context_unet.context_embedding.module.weight" and saved.shape[1] == 2 and current.shape[1] == 3:
+        # ContextUNet concatenates [CT, organ, context_mask].
+        migrated[:, 0] = saved[:, 0]
+        migrated[:, 2] = saved[:, 1]
+        return migrated
+    return None
+
+
+def load_weights(model: torch.nn.Module, path: Path, strict: bool) -> dict:
     payload = torch.load(path, map_location="cpu", weights_only=True)
     state = payload.get("model", payload.get("state_dict", payload))
     normalized = {}
@@ -132,21 +148,31 @@ def load_weights(model: torch.nn.Module, path: Path, strict: bool) -> dict[str, 
         return {"loaded_tensors": len(normalized), "missing_tensors": 0, "unexpected_tensors": 0}
     current = model.state_dict()
     compatible = {key: value for key, value in normalized.items() if key in current and current[key].shape == value.shape}
+    migrated = {}
+    for key, value in normalized.items():
+        if key in current and key not in compatible:
+            adapted = _migrate_organ_input_weight(key, value, current[key])
+            if adapted is not None:
+                migrated[key] = adapted
+    compatible.update(migrated)
     result = model.load_state_dict(compatible, strict=False)
-    print(
-        json.dumps(
-            {
-                "loaded_tensors": len(compatible),
-                "missing_tensors": len(result.missing_keys),
-                "unexpected_tensors": len(result.unexpected_keys),
-            }
-        )
-    )
-    return {
-        "loaded_tensors": len(compatible),
-        "missing_tensors": len(result.missing_keys),
-        "unexpected_tensors": len(result.unexpected_keys),
+    incompatible = {
+        key: {"checkpoint": list(value.shape), "model": list(current[key].shape) if key in current else None}
+        for key, value in normalized.items() if key not in compatible
     }
+    report = {
+        "loaded_tensors": len(compatible),
+        "migrated_input_tensors": sorted(migrated),
+        "missing_tensors": len(result.missing_keys),
+        "unexpected_or_incompatible_tensors": len(incompatible),
+        "incompatible_examples": dict(list(incompatible.items())[:20]),
+        "model_tensor_coverage": len(compatible) / max(len(current), 1),
+        "migration_strategy": "copy CT and context-mask weights; zero-initialize organ-input weights",
+    }
+    print(
+        json.dumps(report)
+    )
+    return report
 
 
 def set_trainable_scope(model: torch.nn.Module, scope: str) -> dict[str, int]:
@@ -225,6 +251,7 @@ def main() -> None:
     parser.add_argument("--weight-decay", type=float, default=1e-5)
     parser.add_argument("--image-size", type=int, default=128)
     parser.add_argument("--target-spacing", default="2.0,2.0,3.0")
+    parser.add_argument("--organ-channel", action="store_true")
     parser.add_argument("--positive-patch-probability", type=float, default=0.7)
     parser.add_argument("--positive-weight", type=float, default=8.0)
     parser.add_argument(
@@ -302,6 +329,7 @@ def main() -> None:
         data_root=args.data_root,
         seed=args.seed,
         require_inspected_context=not args.allow_uninspected_context,
+        include_organ_channel=args.organ_channel,
     )
     train_dataset = PAOT2ICLDataset(split="train", full_volume_target=False, **common)
     val_dataset = PAOT2ICLDataset(
@@ -342,6 +370,7 @@ def main() -> None:
         inner_channels=channels,
         conv_layers_per_stage=args.conv_layers,
         img_size=args.image_size,
+        in_channels=2 if args.organ_channel else 1,
         use_ccti=not args.disable_ccti,
         ccti_mode=args.ccti_mode,
         ccti_channel_ratio=args.ccti_ratio,
@@ -351,6 +380,10 @@ def main() -> None:
         pretrained_report = load_weights(model, args.pretrained, strict=False)
         if pretrained_report["loaded_tensors"] == 0:
             raise RuntimeError("the pretrained checkpoint did not match any model tensors")
+        if pretrained_report["model_tensor_coverage"] < 0.90:
+            raise RuntimeError(
+                f"pretrained tensor coverage is only {pretrained_report['model_tensor_coverage']:.1%}"
+            )
     resume_payload = None
     if args.checkpoint:
         load_weights(model, args.checkpoint, strict=True)
@@ -373,6 +406,8 @@ def main() -> None:
                 "channels": channels,
                 "patch_size": args.image_size,
                 "target_spacing": target_spacing,
+                "input_channels": 2 if args.organ_channel else 1,
+                "organ_channel": args.organ_channel,
                 "positive_patch_probability": args.positive_patch_probability,
                 "positive_weight": args.positive_weight,
                 "gradient_accumulation": args.gradient_accumulation,

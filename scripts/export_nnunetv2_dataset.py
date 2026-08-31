@@ -13,7 +13,7 @@ def load_jsonl(path: Path) -> list[dict]:
 
 
 def case_identifier(row: dict) -> str:
-    name = Path(row["mask"]).name
+    name = Path(row.get("roi_tumor_mask", row.get("tumor_mask", row["mask"]))).name
     return name[:-7] if name.endswith(".nii.gz") else Path(name).stem
 
 
@@ -47,16 +47,23 @@ def main() -> None:
         if identifier in seen:
             raise ValueError(f"duplicate nnU-Net case identifier: {identifier}")
         seen.add(identifier)
+        image = row.get("roi_image", row["image"])
+        organ = row.get("roi_organ_mask", row.get("organ_mask"))
+        tumor = row.get("roi_tumor_mask", row.get("tumor_mask", row.get("mask")))
+        if organ is None or tumor is None:
+            raise ValueError(f"{row['case_id']}: ROI organ/tumor mask is missing")
         if row["split"] == "test":
-            link(row["image"], raw_dir / "imagesTs" / f"{identifier}_0000.nii.gz")
-            link(row["mask"], raw_dir / "labelsTs" / f"{identifier}.nii.gz")
+            link(image, raw_dir / "imagesTs" / f"{identifier}_0000.nii.gz")
+            link(organ, raw_dir / "imagesTs" / f"{identifier}_0001.nii.gz")
+            link(tumor, raw_dir / "labelsTs" / f"{identifier}.nii.gz")
         else:
-            link(row["image"], raw_dir / "imagesTr" / f"{identifier}_0000.nii.gz")
-            link(row["mask"], raw_dir / "labelsTr" / f"{identifier}.nii.gz")
+            link(image, raw_dir / "imagesTr" / f"{identifier}_0000.nii.gz")
+            link(organ, raw_dir / "imagesTr" / f"{identifier}_0001.nii.gz")
+            link(tumor, raw_dir / "labelsTr" / f"{identifier}.nii.gz")
             split[row["split"]].append(identifier)
 
     dataset_json = {
-        "channel_names": {"0": "CT"},
+        "channel_names": {"0": "CT", "1": "TotalSegmentator_organ_mask"},
         "labels": {"background": 0, "tumor": 1},
         "numTraining": len(split["train"]) + len(split["val"]),
         "file_ending": ".nii.gz",
@@ -73,6 +80,7 @@ def main() -> None:
         "train": len(split["train"]),
         "val": len(split["val"]),
         "test": sum(row["split"] == "test" for row in rows),
+        "input_channels": 2,
         "raw_dir": str(raw_dir),
         "preprocessed_dir": str(preprocessed_dir),
     }

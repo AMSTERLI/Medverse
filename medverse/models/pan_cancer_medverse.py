@@ -21,6 +21,7 @@ class PanCancerMedverse(Medverse):
         patch_num: int = 4,
         hidden_size: int = 66,
         img_size: int = 128,
+        in_channels: int = 1,
         use_ccti: bool = True,
         ccti_mode: str = "learned",
         ccti_channel_ratio: float = 0.25,
@@ -28,7 +29,7 @@ class PanCancerMedverse(Medverse):
         ccti_stage_indices: Sequence[int] = (0, 1, 2),
     ):
         super().__init__(
-            in_channels=1,
+            in_channels=in_channels,
             out_channels=1,
             stages=len(inner_channels),
             dim=3,
