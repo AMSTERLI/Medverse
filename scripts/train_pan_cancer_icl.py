@@ -241,6 +241,8 @@ def evaluate(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--train-split", default="train")
+    parser.add_argument("--val-split", default="val")
     parser.add_argument("--data-root", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("runs/paot2_ccti"))
     parser.add_argument("--epochs", type=int, default=20)
@@ -331,9 +333,9 @@ def main() -> None:
         require_inspected_context=not args.allow_uninspected_context,
         include_organ_channel=args.organ_channel,
     )
-    train_dataset = PAOT2ICLDataset(split="train", full_volume_target=False, **common)
+    train_dataset = PAOT2ICLDataset(split=args.train_split, full_volume_target=False, **common)
     val_dataset = PAOT2ICLDataset(
-        split="val", full_volume_target=not args.val_positive_patches,
+        split=args.val_split, full_volume_target=not args.val_positive_patches,
         drop_empty_targets=args.val_positive_patches,
         max_cases_per_task=args.val_cases_per_task, **common
     )

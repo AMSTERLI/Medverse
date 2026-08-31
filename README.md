@@ -79,3 +79,11 @@ PAOT2 CT pair lists can be converted into organ-aware binary ICL episodes with
 `scripts/prepare_paot2_manifest.py`.  The complete organ/label mapping and the
 minimal train/evaluate commands are documented in `docs/paot2_training.md`.
 
+## Liver/kidney CT main experiment
+
+The reproducible LiTS + KiTS23 + MSWAL experiment (shared TotalSegmentator ROI,
+nnU-Net v2 No-ICL versus PanCancerMedverse ICL + original BAM, CCTI disabled) is
+documented in Chinese in `docs/liver_kidney_icl_experiment_zh.md`. Formal
+training is protected by separate smoke-test and 2–4-case overfit gates and the
+launcher never starts more than one process per GPU.
+

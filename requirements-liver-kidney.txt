@@ -1,0 +1,18 @@
+# Validated on CentOS 7, Python 3.10.18 and CUDA 12.1. This supplements the
+# upstream requirements; install a CUDA-compatible PyTorch build separately.
+nnunetv2==2.5.2
+TotalSegmentator==2.18.0
+acvl-utils==0.2.6
+dynamic-network-architectures==0.3.1
+batchgenerators==0.25.1
+batchgeneratorsv2==0.3.0
+connected-components-3d==3.24.0
+blosc2==3.3.4
+ndindex==1.9.2
+surface-distance==0.1
+SimpleITK>=2.2.1
+nibabel>=5.2
+numpy>=1.24
+scipy>=1.11
+scikit-image>=0.19.3
+pytest>=8
