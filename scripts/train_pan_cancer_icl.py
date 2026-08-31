@@ -232,6 +232,14 @@ def main() -> None:
     parser.add_argument("--prediction-mode", choices=("logits", "regression"), default="logits")
     parser.add_argument("--val-overlap", type=float, default=0.5)
     parser.add_argument("--val-cases-per-task", type=int, default=20)
+    parser.add_argument(
+        "--val-positive-patches",
+        action="store_true",
+        help=(
+            "Diagnostic evaluation: crop validation targets around foreground exactly like "
+            "positive training patches instead of evaluating full volumes."
+        ),
+    )
     parser.add_argument("--disable-task-balancing", action="store_true")
     parser.add_argument("--num-context", type=int, default=2)
     parser.add_argument("--channels", default="16,32,64,128,256")
@@ -288,7 +296,8 @@ def main() -> None:
     )
     train_dataset = PAOT2ICLDataset(split="train", full_volume_target=False, **common)
     val_dataset = PAOT2ICLDataset(
-        split="val", full_volume_target=True, drop_empty_targets=False,
+        split="val", full_volume_target=not args.val_positive_patches,
+        drop_empty_targets=args.val_positive_patches,
         max_cases_per_task=args.val_cases_per_task, **common
     )
     sampler = None
@@ -354,7 +363,9 @@ def main() -> None:
                 "loss_mode": args.loss_mode,
                 "prediction_mode": args.prediction_mode,
                 "task_balancing": sampler is not None,
-                "validation": "full_volume_sliding_window",
+                "validation": (
+                    "positive_patch" if args.val_positive_patches else "full_volume_sliding_window"
+                ),
                 "pretrained": str(args.pretrained) if args.pretrained else None,
                 "pretrained_report": pretrained_report,
                 "trainable_scope": initial_scope,
