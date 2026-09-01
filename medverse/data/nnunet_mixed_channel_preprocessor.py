@@ -35,15 +35,16 @@ class MixedChannelPreprocessor(DefaultPreprocessor):
         data = data.astype(np.float32)
         if data.shape[0] != 2:
             raise ValueError(f"MixedChannelPreprocessor requires CT+organ channels, got {data.shape[0]}")
-        if seg is None:
-            raise ValueError("training preprocessing requires a tumor segmentation")
-        if data.shape[1:] != seg.shape[1:]:
-            raise ValueError("image/organ/tumor shapes differ before preprocessing")
-        seg = np.copy(seg)
+        has_seg = seg is not None
+        if has_seg:
+            if data.shape[1:] != seg.shape[1:]:
+                raise ValueError("image/organ/tumor shapes differ before preprocessing")
+            seg = np.copy(seg)
 
         order = [0, *[axis + 1 for axis in plans_manager.transpose_forward]]
         data = data.transpose(order)
-        seg = seg.transpose(order)
+        if has_seg:
+            seg = seg.transpose(order)
         original_spacing = [properties["spacing"][axis] for axis in plans_manager.transpose_forward]
         properties["shape_before_cropping"] = data.shape[1:]
         data, seg, bbox = crop_to_nonzero(data, seg)
@@ -81,17 +82,18 @@ class MixedChannelPreprocessor(DefaultPreprocessor):
             seg, new_shape, original_spacing, target_spacing
         )
 
-        label_manager = plans_manager.get_label_manager(dataset_json)
-        collect = (
-            list(label_manager.foreground_regions)
-            if label_manager.has_regions
-            else list(label_manager.foreground_labels)
-        )
-        if label_manager.has_ignore_label:
-            collect.append([-1, *label_manager.all_labels])
-        properties["class_locations"] = self._sample_foreground_locations(
-            seg, collect, verbose=self.verbose
-        )
-        seg = self.modify_seg_fn(seg, plans_manager, dataset_json, configuration_manager)
+        if has_seg:
+            label_manager = plans_manager.get_label_manager(dataset_json)
+            collect = (
+                list(label_manager.foreground_regions)
+                if label_manager.has_regions
+                else list(label_manager.foreground_labels)
+            )
+            if label_manager.has_ignore_label:
+                collect.append([-1, *label_manager.all_labels])
+            properties["class_locations"] = self._sample_foreground_locations(
+                seg, collect, verbose=self.verbose
+            )
+            seg = self.modify_seg_fn(seg, plans_manager, dataset_json, configuration_manager)
         seg = seg.astype(np.int16 if np.max(seg) > 127 else np.int8, copy=False)
         return data, seg, properties
