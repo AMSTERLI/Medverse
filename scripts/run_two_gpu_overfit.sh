@@ -33,6 +33,9 @@ SPACING=$("${PYTHON}" scripts/snapshot_nnunetv2_plan.py \
 
 export nnUNet_raw=${NNUNET_STORAGE}/nnUNet_raw
 export nnUNet_preprocessed=${NNUNET_STORAGE}/nnUNet_preprocessed
+# CentOS 7 ships GCC 4.8 without stdatomic.h, which makes the optional
+# PyTorch/Inductor path fail before the first optimization step.
+export nnUNet_compile=${NNUNET_COMPILE:-False}
 
 run_no_icl() {
   export CUDA_VISIBLE_DEVICES=0

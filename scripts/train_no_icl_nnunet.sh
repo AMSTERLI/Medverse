@@ -13,6 +13,7 @@ PLANS_IDENTIFIER=${NNUNET_PLANS_IDENTIFIER:-nnUNetPlans_MixedChannels}
 export nnUNet_raw=${NNUNET_STORAGE}/nnUNet_raw
 export nnUNet_preprocessed=${NNUNET_STORAGE}/nnUNet_preprocessed
 export nnUNet_results=${EXPERIMENT_DIR}/checkpoints
+export nnUNet_compile=${NNUNET_COMPILE:-False}
 mkdir -p "${nnUNet_raw}" "${nnUNet_preprocessed}" "${nnUNet_results}"
 
 command -v nnUNetv2_train >/dev/null 2>&1 || {

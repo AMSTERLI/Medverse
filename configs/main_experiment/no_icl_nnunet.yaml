@@ -10,6 +10,7 @@ context: disabled
 input_channels: [CT, TotalSegmentator_organ_mask]
 spacing_and_patch_policy: nnunetv2_planner
 amp: true
+torch_compile: false
 gpu_slot: 0
 output_dir: work/experiments/no_icl_nnunet
 formal_training_gate: overfit_2_to_4_cases_must_pass
