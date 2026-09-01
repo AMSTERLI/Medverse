@@ -35,7 +35,7 @@ mkdir -p work/slurm "$(dirname "${FIXED_MANIFEST}")" "${DERIVED_ROOT}/manifests"
   --manifest "${FIXED_MANIFEST}" \
   --output-root "${DERIVED_ROOT}" \
   --output-manifest "${ROI_MANIFEST}" \
-  --margin-mm 30 \
+  --margin-mm 150 \
   --workers 8 \
   --qc-samples-per-stratum 3 \
   --fail-on-geometric-qc

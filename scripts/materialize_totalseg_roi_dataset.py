@@ -118,7 +118,18 @@ def process_one(payload: tuple[Any, ...]) -> dict[str, Any]:
     tumor = apply_orientation(source_tumor, orientation)
     affine = original_nii.affine @ nib.orientations.inv_ornt_aff(orientation, original_nii.shape)
     spacing = np.sqrt((affine[:3, :3] ** 2).sum(axis=0))
-    start, end = _bbox(organ, margin_mm, spacing)
+    voxel_volume = float(abs(np.linalg.det(affine[:3, :3])))
+    organ_volume = float(organ.sum() * voxel_volume)
+    primary_organ = row.get("primary_organ", str(row["target_region"]).removesuffix("_tumor"))
+    abnormal_threshold = 200_000.0 if primary_organ == "liver" else 30_000.0
+    full_volume_fallback = organ_volume < abnormal_threshold
+    if full_volume_fallback:
+        # This decision only uses the predicted organ mask, so the exact same
+        # fallback is available at inference time without looking at tumor GT.
+        start = np.zeros(3, dtype=int)
+        end = np.asarray(organ.shape, dtype=int)
+    else:
+        start, end = _bbox(organ, margin_mm, spacing)
     slices = tuple(slice(int(a), int(b)) for a, b in zip(start, end))
     crop_affine = affine.copy()
     crop_affine[:3, 3] = affine[:3, :3] @ start + affine[:3, 3]
@@ -126,13 +137,9 @@ def process_one(payload: tuple[Any, ...]) -> dict[str, Any]:
     tumor_total = int(tumor.sum())
     tumor_inside = int(tumor[slices].sum())
     coverage = 1.0 if tumor_total == 0 else tumor_inside / tumor_total
-    voxel_volume = float(abs(np.linalg.det(affine[:3, :3])))
-    organ_volume = float(organ.sum() * voxel_volume)
-    primary_organ = row.get("primary_organ", str(row["target_region"]).removesuffix("_tumor"))
-    abnormal_threshold = 200_000.0 if primary_organ == "liver" else 30_000.0
     qc_flags: list[str] = []
-    if organ_volume < abnormal_threshold:
-        qc_flags.append("organ_volume_abnormally_small")
+    if full_volume_fallback:
+        qc_flags.append("organ_volume_abnormally_small_full_volume_fallback")
     if coverage < 0.999:
         qc_flags.append("tumor_partly_outside_fixed_organ_roi")
     if tumor_total == 0:
@@ -158,6 +165,7 @@ def process_one(payload: tuple[Any, ...]) -> dict[str, Any]:
         "canonical_affine": affine.tolist(), "original_to_ras_orientation": orientation.tolist(),
         "crop_bbox_original_voxels": {"start": start.tolist(), "end_exclusive": end.tolist(), "space": "canonical_RAS"},
         "crop_affine": crop_affine.tolist(), "crop_margin_mm": margin_mm,
+        "full_volume_fallback": full_volume_fallback,
         "inverse_transform": "insert ROI into canonical_RAS bbox, then apply inverse orientation",
         "spacing_xyz_mm": spacing.tolist(), "roi_shape": list(image[slices].shape),
         "roi_tumor_coverage": coverage, "qc_status": "pass" if not qc_flags else "warning",
@@ -177,7 +185,8 @@ def process_one(payload: tuple[Any, ...]) -> dict[str, Any]:
         "foreground_voxels": tumor_total, "tumor_volume_mm3": tumor_total * voxel_volume,
         "maximum_3d_diameter_mm": diameter, "maximum_3d_diameter_method": diameter_method,
         "spacing_xyz_mm": spacing.tolist(), "crop_bbox_original_voxels": metadata["crop_bbox_original_voxels"],
-        "crop_margin_mm": margin_mm, "roi_shape": metadata["roi_shape"],
+        "crop_margin_mm": margin_mm, "full_volume_fallback": full_volume_fallback,
+        "roi_shape": metadata["roi_shape"],
         "roi_tumor_coverage": coverage, "image_sha256": file_sha256(row["image"]),
         "mask_sha256": file_sha256(row["mask"]), "organ_mask_sha256": file_sha256(row["organ_mask"]),
         "qc_status": metadata["qc_status"], "qc_flags": qc_flags,

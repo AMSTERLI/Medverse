@@ -84,6 +84,32 @@ def test_original_spacing_crop_and_inverse_roundtrip(tmp_path: Path):
     assert output["roi_tumor_coverage"] == 1.0
 
 
+def test_abnormally_small_organ_uses_reproducible_full_volume_fallback(tmp_path: Path):
+    materialize = load_script("materialize_totalseg_roi_dataset.py")
+    shape = (16, 14, 12)
+    affine = np.eye(4)
+    image = np.zeros(shape, dtype=np.float32)
+    raw_label = np.zeros(shape, dtype=np.uint8)
+    raw_label[12:15, 10:13, 8:11] = 2
+    organ = np.zeros(shape, dtype=np.uint8)
+    organ[1, 1, 1] = 1
+    image_path, label_path, organ_path = (tmp_path / name for name in ("ct.nii.gz", "label.nii.gz", "organ.nii.gz"))
+    nib.save(nib.Nifti1Image(image, affine), image_path)
+    nib.save(nib.Nifti1Image(raw_label, affine), label_path)
+    nib.save(nib.Nifti1Image(organ, affine), organ_path)
+    row = {
+        "case_id": "KiTS23:p1:kidney_tumor", "patient_id": "p1", "study_id": "p1",
+        "source_dataset": "KiTS23", "source_case_id": "p1", "target_region": "kidney_tumor",
+        "primary_organ": "kidney", "image": str(image_path), "mask": str(label_path),
+        "organ_mask": str(organ_path), "tumor_label_values": [2], "split": "test",
+    }
+    output = materialize.process_one((row, str(tmp_path / "derived"), 150.0))
+    assert output["full_volume_fallback"] is True
+    assert output["roi_shape"] == list(shape)
+    assert output["roi_tumor_coverage"] == 1.0
+    assert output["qc_flags"] == ["organ_volume_abnormally_small_full_volume_fallback"]
+
+
 def test_snapshot_nnunet_plan(tmp_path: Path, capsys):
     module = load_script("snapshot_nnunetv2_plan.py")
     plans = tmp_path / "plans.json"

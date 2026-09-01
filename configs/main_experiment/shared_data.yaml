@@ -13,7 +13,8 @@ split:
 roi:
   source: frozen_offline_TotalSegmentator_total
   roi_subset: [liver, kidney_left, kidney_right]
-  margin_mm: 30
+  margin_mm: 150
+  abnormal_organ_fallback: full_volume
   orientation: RAS
   resample_during_crop: false
   spacing_policy: nnunetv2_fingerprint_and_planner
