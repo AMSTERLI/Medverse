@@ -21,7 +21,7 @@ mkdir -p "${ROOT}" "${GATES}"
   --splits-file "${NNUNET_STORAGE}/nnUNet_preprocessed/${DATASET}/splits_final.json" \
   --prediction-input "${ROOT}/no_icl/input" --fold 1
 SPACING=$("${PYTHON}" scripts/snapshot_nnunetv2_plan.py \
-  --plans "${NNUNET_STORAGE}/nnUNet_preprocessed/${DATASET}/nnUNetPlans.json" \
+  --plans "${NNUNET_STORAGE}/nnUNet_preprocessed/${DATASET}/nnUNetPlans_MixedChannels.json" \
   --fingerprint "${NNUNET_STORAGE}/nnUNet_preprocessed/${DATASET}/dataset_fingerprint.json" \
   --output "${PLAN_SNAPSHOT}" --print-spacing)
 
@@ -32,9 +32,9 @@ run_no_icl() {
   export CUDA_VISIBLE_DEVICES=0
   export nnUNet_results=${ROOT}/no_icl/checkpoints
   mkdir -p "${nnUNet_results}" "${ROOT}/no_icl/roi_predictions" "${ROOT}/no_icl/restored"
-  nnUNetv2_train 501 3d_fullres 1 -tr nnUNetTrainer_20epochs --npz
+  nnUNetv2_train 501 3d_fullres 1 -tr nnUNetTrainer_20epochs -p nnUNetPlans_MixedChannels --npz
   nnUNetv2_predict -i "${ROOT}/no_icl/input" -o "${ROOT}/no_icl/roi_predictions" \
-    -d 501 -c 3d_fullres -f 1 -tr nnUNetTrainer_20epochs -chk checkpoint_best.pth
+    -d 501 -c 3d_fullres -f 1 -tr nnUNetTrainer_20epochs -p nnUNetPlans_MixedChannels -chk checkpoint_best.pth
   "${PYTHON}" scripts/restore_nnunet_predictions.py --manifest "${MANIFEST}" --split train \
     --roi-predictions "${ROOT}/no_icl/roi_predictions" --output-dir "${ROOT}/no_icl/restored"
   "${PYTHON}" scripts/evaluate_liver_kidney_original_space.py --manifest "${MANIFEST}" --split train \

@@ -36,8 +36,9 @@ mkdir -p work/slurm "$(dirname "${FIXED_MANIFEST}")" "${DERIVED_ROOT}/manifests"
   --output-root "${DERIVED_ROOT}" \
   --output-manifest "${ROI_MANIFEST}" \
   --margin-mm 30 \
-  --workers "${SLURM_CPUS_PER_TASK:-16}" \
-  --qc-samples-per-stratum 3
+  --workers 8 \
+  --qc-samples-per-stratum 3 \
+  --fail-on-geometric-qc
 
 export nnUNet_raw=${NNUNET_STORAGE}/nnUNet_raw
 export nnUNet_preprocessed=${NNUNET_STORAGE}/nnUNet_preprocessed
@@ -49,11 +50,15 @@ export nnUNet_results=${PROJECT_DIR}/work/experiments/no_icl_nnunet/checkpoints
   --dataset-id "${DATASET_ID}" \
   --dataset-name "${DATASET_NAME}"
 
-nnUNetv2_plan_and_preprocess -d "${DATASET_ID}" -c 3d_fullres --verify_dataset_integrity
+"${PYTHON}" scripts/install_nnunet_mixed_preprocessor.py
+nnUNetv2_plan_and_preprocess -d "${DATASET_ID}" -c 3d_fullres -np 8 \
+  --verify_dataset_integrity \
+  -preprocessor_name MixedChannelPreprocessor \
+  -overwrite_plans_name nnUNetPlans_MixedChannels
 
 DATASET_DIR=${nnUNet_preprocessed}/Dataset$(printf '%03d' "${DATASET_ID}")_${DATASET_NAME}
 "${PYTHON}" scripts/snapshot_nnunetv2_plan.py \
-  --plans "${DATASET_DIR}/nnUNetPlans.json" \
+  --plans "${DATASET_DIR}/nnUNetPlans_MixedChannels.json" \
   --fingerprint "${DATASET_DIR}/dataset_fingerprint.json" \
   --configuration 3d_fullres \
   --output "${PROJECT_DIR}/work/experiments/nnunet_plan_snapshot.json"

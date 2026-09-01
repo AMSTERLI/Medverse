@@ -220,6 +220,7 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--max-cases", type=int)
     parser.add_argument("--qc-samples-per-stratum", type=int, default=3)
+    parser.add_argument("--fail-on-geometric-qc", action="store_true")
     args = parser.parse_args()
     rows = load_jsonl(args.manifest)
     if args.max_cases is not None:
@@ -246,6 +247,7 @@ def main() -> None:
         "cases": len(outputs), "resampling_performed": False,
         "spacing_policy": "deferred_to_nnunetv2_planner", "margin_mm": args.margin_mm,
         "qc_status": dict(Counter(row["qc_status"] for row in outputs)),
+        "qc_flags": dict(Counter(flag for row in outputs for flag in row["qc_flags"])),
         "qc_overlays": sum(chosen.values()),
         "shape_min": np.min([row["roi_shape"] for row in outputs], axis=0).tolist(),
         "shape_median": np.median([row["roi_shape"] for row in outputs], axis=0).tolist(),
@@ -253,6 +255,13 @@ def main() -> None:
     }
     args.output_manifest.with_suffix(".summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
     print(json.dumps(summary, indent=2))
+    geometric_flags = {"organ_volume_abnormally_small", "tumor_partly_outside_fixed_organ_roi"}
+    geometric_failures = [
+        row["case_id"] for row in outputs if geometric_flags.intersection(row["qc_flags"])
+    ]
+    if args.fail_on_geometric_qc and geometric_failures:
+        print(json.dumps({"geometric_qc_failures": geometric_failures[:50]}, indent=2))
+        raise SystemExit(7)
 
 
 if __name__ == "__main__":

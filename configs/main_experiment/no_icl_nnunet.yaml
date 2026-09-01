@@ -1,6 +1,9 @@
 name: no_icl_nnunet
 model: nnUNet_v2
 configuration: 3d_fullres
+plans_identifier: nnUNetPlans_MixedChannels
+organ_channel_normalization: NoNormalization
+organ_channel_resampling: nearest_neighbor
 dataset_id: 501
 fold: 0
 context: disabled

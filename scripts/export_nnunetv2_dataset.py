@@ -63,7 +63,10 @@ def main() -> None:
             split[row["split"]].append(identifier)
 
     dataset_json = {
-        "channel_names": {"0": "CT", "1": "TotalSegmentator_organ_mask"},
+        # nnU-Net maps the reserved name noNorm to NoNormalization. The custom
+        # preprocessor additionally resamples this channel with nearest-neighbor.
+        "channel_names": {"0": "CT", "1": "noNorm"},
+        "channel_descriptions": {"0": "CT", "1": "TotalSegmentator_binary_organ_mask"},
         "labels": {"background": 0, "tumor": 1},
         "numTraining": len(split["train"]) + len(split["val"]),
         "file_ending": ".nii.gz",

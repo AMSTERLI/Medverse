@@ -8,6 +8,7 @@ EXPERIMENT_DIR=${NO_ICL_EXPERIMENT_DIR:-${PROJECT_DIR}/work/experiments/no_icl_n
 NNUNET_STORAGE=${NNUNET_STORAGE:-${PROJECT_DIR}/work/experiments/nnunet_storage}
 DATASET_ID=${NNUNET_DATASET_ID:-501}
 TRAINER=${NNUNET_TRAINER:-nnUNetTrainer_100epochs}
+PLANS_IDENTIFIER=${NNUNET_PLANS_IDENTIFIER:-nnUNetPlans_MixedChannels}
 
 export nnUNet_raw=${NNUNET_STORAGE}/nnUNet_raw
 export nnUNet_preprocessed=${NNUNET_STORAGE}/nnUNet_preprocessed
@@ -19,7 +20,7 @@ command -v nnUNetv2_train >/dev/null 2>&1 || {
   exit 127
 }
 
-COMMAND=(nnUNetv2_train "${DATASET_ID}" 3d_fullres 0 -tr "${TRAINER}" --npz)
+COMMAND=(nnUNetv2_train "${DATASET_ID}" 3d_fullres 0 -tr "${TRAINER}" -p "${PLANS_IDENTIFIER}" --npz)
 if [[ "${MODE}" == "resume" ]]; then
   COMMAND+=(--c)
 elif [[ "${MODE}" != "start" ]]; then
