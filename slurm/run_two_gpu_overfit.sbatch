@@ -16,4 +16,5 @@ cd "${PROJECT_DIR}"
 export MEDVERSE_PROJECT_DIR=${PROJECT_DIR}
 echo "job_id=${SLURM_JOB_ID} host=$(hostname) visible_gpus=${CUDA_VISIBLE_DEVICES:-unset}"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
-bash scripts/run_two_gpu_overfit.sh
+RUN_TARGET=${RUN_TARGET:-both}
+bash scripts/run_two_gpu_overfit.sh "${RUN_TARGET}"

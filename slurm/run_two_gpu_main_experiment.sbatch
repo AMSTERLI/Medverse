@@ -22,4 +22,5 @@ echo "host=$(hostname)"
 echo "visible_gpus=${CUDA_VISIBLE_DEVICES:-unset}"
 nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
 
-bash scripts/run_two_gpu_main_experiment.sh both
+RUN_TARGET=${RUN_TARGET:-both}
+bash scripts/run_two_gpu_main_experiment.sh "${RUN_TARGET}"

@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 PROJECT_DIR=${MEDVERSE_PROJECT_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}
 PYTHON=${MEDVERSE_PYTHON:-python}
+RUN_TARGET=${1:-both}
 ROI_MANIFEST=${MAIN_ROI_MANIFEST:-${PROJECT_DIR}/work/data/kits23_lits_mswal_liver_kidney_v1/manifests/roi_manifest.jsonl}
 PLAN_SNAPSHOT=${NNUNET_PLAN_SNAPSHOT:-${PROJECT_DIR}/work/experiments/nnunet_plan_snapshot.json}
 NNUNET_STORAGE=${NNUNET_STORAGE:-${PROJECT_DIR}/work/experiments/nnunet_storage}
@@ -12,6 +13,11 @@ ROOT=${PROJECT_DIR}/work/experiments/overfit
 MANIFEST=${ROOT}/manifest.jsonl
 GATES=${PROJECT_DIR}/work/experiments/gates
 DATASET=Dataset501_PanCancerTotalSegROI
+
+case "${RUN_TARGET}" in
+  both|no-icl|icl) ;;
+  *) echo "usage: $0 [both|no-icl|icl]" >&2; exit 2 ;;
+esac
 
 cd "${PROJECT_DIR}"
 mkdir -p "${ROOT}" "${GATES}"
@@ -44,7 +50,9 @@ run_no_icl() {
 }
 
 run_icl() {
-  export CUDA_VISIBLE_DEVICES=1
+  local gpu=1
+  [[ "${RUN_TARGET}" == "icl" ]] && gpu=0
+  export CUDA_VISIBLE_DEVICES=${gpu}
   local out=${ROOT}/icl_bam_k3/checkpoints
   mkdir -p "${out}" "${ROOT}/icl_bam_k3/predictions"
   "${PYTHON}" scripts/train_pan_cancer_icl.py --manifest "${MANIFEST}" \
@@ -66,13 +74,23 @@ run_icl() {
     --gate "${GATES}/icl_bam_k3_overfit.pass" --expected-cases 8
 }
 
-run_no_icl >"${ROOT}/no_icl.log" 2>&1 &
-PID0=$!
-run_icl >"${ROOT}/icl_bam_k3.log" 2>&1 &
-PID1=$!
-echo "no_icl_pid=${PID0} gpu=0"
-echo "icl_bam_k3_pid=${PID1} gpu=1"
+declare -a PIDS=()
+if [[ "${RUN_TARGET}" == "both" || "${RUN_TARGET}" == "no-icl" ]]; then
+  run_no_icl >"${ROOT}/no_icl.log" 2>&1 &
+  PID0=$!
+  PIDS+=("${PID0}")
+  echo "no_icl_pid=${PID0} gpu=0"
+fi
+if [[ "${RUN_TARGET}" == "both" || "${RUN_TARGET}" == "icl" ]]; then
+  ICL_GPU=1
+  [[ "${RUN_TARGET}" == "icl" ]] && ICL_GPU=0
+  run_icl >"${ROOT}/icl_bam_k3.log" 2>&1 &
+  PID1=$!
+  PIDS+=("${PID1}")
+  echo "icl_bam_k3_pid=${PID1} gpu=${ICL_GPU}"
+fi
 STATUS=0
-wait "${PID0}" || STATUS=$?
-wait "${PID1}" || STATUS=$?
+for pid in "${PIDS[@]}"; do
+  wait "${pid}" || STATUS=$?
+done
 exit "${STATUS}"
