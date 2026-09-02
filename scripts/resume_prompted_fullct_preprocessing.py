@@ -21,8 +21,8 @@ import blosc2
 from batchgenerators.utilities.file_and_folder_operations import load_json
 from tqdm import tqdm
 
-from medverse.data.nnunet_prompted_fullct_preprocessor import PromptedFullCTPreprocessor
 from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw
+from nnunetv2.preprocessing.preprocessors.prompted_fullct_preprocessor import PromptedFullCTPreprocessor
 from nnunetv2.utilities.dataset_name_id_conversion import maybe_convert_to_dataset_name
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
 from nnunetv2.utilities.utils import get_filenames_of_train_images_and_targets
