@@ -45,6 +45,7 @@ def main() -> None:
         raise ValueError(f"unexpected task set: {tasks}")
 
     patient_splits: dict[str, set[str]] = defaultdict(set)
+    empty_tumor_cases: Counter[tuple[str, str]] = Counter()
     for row in rows:
         split = str(row["split"])
         patient_splits[str(row["patient_id"])].add(split)
@@ -55,8 +56,15 @@ def main() -> None:
         missing = [key for key in required if not Path(row[key]).exists()]
         if missing:
             raise FileNotFoundError(f"{row['case_id']}: missing exports {missing}")
-        if int(row["organ_voxels"]) <= 0 or int(row["tumor_voxels"]) <= 0:
-            raise ValueError(f"{row['case_id']}: empty organ/tumor supervision")
+        if int(row["organ_voxels"]) <= 0:
+            raise ValueError(f"{row['case_id']}: empty organ supervision")
+        # A fully annotated scan without the prompted tumor is a useful negative
+        # example for nnU-Net. It cannot serve as ICL context, but it must not be
+        # removed from this supervised full-CT baseline.
+        if int(row["tumor_voxels"]) == 0:
+            empty_tumor_cases[(str(row["source_dataset"]), split)] += 1
+        elif int(row["tumor_voxels"]) < 0:
+            raise ValueError(f"{row['case_id']}: invalid negative tumor voxel count")
     leaking = {patient: splits for patient, splits in patient_splits.items() if len(splits) > 1}
     if leaking:
         raise ValueError(f"patient split leakage detected for {len(leaking)} patients")
@@ -81,6 +89,10 @@ def main() -> None:
         "split": dict(counts),
         "task": dict(Counter(str(row["target_region"]) for row in rows)),
         "source": dict(Counter(str(row["source_dataset"]) for row in rows)),
+        "empty_tumor_cases": {
+            f"{source}:{split}": count
+            for (source, split), count in sorted(empty_tumor_cases.items())
+        },
         "patient_split_leakage": 0,
         "status": "passed",
     }
