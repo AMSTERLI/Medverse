@@ -107,3 +107,15 @@ def test_evaluation_scores_only_prompted_tumor_label(tmp_path: Path):
     }
     result = EVALUATE.evaluate_case(row, prediction_path, 2.0, (2,))
     assert result["dice"] == 1.0
+
+
+def test_uncompressed_ct_is_reencoded_as_real_gzip(tmp_path: Path):
+    array = np.arange(64, dtype=np.int16).reshape(4, 4, 4)
+    source = tmp_path / "source.nii"
+    destination = tmp_path / "nnunet_0000.nii.gz"
+    nib.save(nib.Nifti1Image(array, np.eye(4)), source)
+    mode = MODULE.link_or_reencode_ct(source, destination)
+    with destination.open("rb") as stream:
+        assert stream.read(2) == b"\x1f\x8b"
+    assert np.array_equal(np.asarray(nib.load(destination).dataobj), array)
+    assert mode == "lossless_nifti_gzip_reencode"

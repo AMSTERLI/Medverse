@@ -36,7 +36,7 @@ def main() -> None:
     args.splits_file.write_text(json.dumps(splits, indent=2), encoding="utf-8")
     for row in rows:
         identifier = row["nnunet_case_identifier"]
-        link(row["full_ct_image"], args.prediction_input / f"{identifier}_0000.nii.gz")
+        link(row.get("nnunet_ct_image", row["full_ct_image"]), args.prediction_input / f"{identifier}_0000.nii.gz")
         link(row["prompt_image"], args.prediction_input / f"{identifier}_0001.nii.gz")
     print(json.dumps({"fold": args.fold, "cases": len(rows), "train_equals_val": True}, indent=2))
 

@@ -84,6 +84,27 @@ def link(source: Path, destination: Path) -> None:
     os.symlink(source, destination)
 
 
+def link_or_reencode_ct(source: Path, destination: Path) -> str:
+    """Keep genuine .nii.gz files linked; gzip uncompressed NIfTI sources.
+
+    Some curated LiTS paths deliberately retain their original ``.nii`` files.
+    Linking one of those to a ``.nii.gz`` nnU-Net filename makes nibabel select
+    the wrong decoder from the destination suffix.  Re-encoding preserves the
+    voxel grid and header without changing intensities.
+    """
+    source = source.resolve()
+    with source.open("rb") as stream:
+        gzip_encoded = stream.read(2) == b"\x1f\x8b"
+    if gzip_encoded:
+        link(source, destination)
+        return "symlink_existing_gzip"
+    if destination.is_symlink():
+        destination.unlink()
+    image = nib.load(source)
+    save_atomic(image, destination)
+    return "lossless_nifti_gzip_reencode"
+
+
 def build_label_and_prompt(row: dict[str, Any], label_path: Path, prompt_path: Path) -> dict[str, Any]:
     source = str(row["source_dataset"])
     task = str(row["target_region"])
@@ -148,13 +169,15 @@ def process_one(payload: tuple[dict[str, Any], str]) -> dict[str, Any]:
     ct_destination = images_dir / f"{identifier}_0000.nii.gz"
     prompt_destination = images_dir / f"{identifier}_0001.nii.gz"
     label_destination = labels_dir / f"{identifier}.nii.gz"
-    link(full_ct_path(row), ct_destination)
+    ct_export_mode = link_or_reencode_ct(full_ct_path(row), ct_destination)
     metadata = build_label_and_prompt(row, label_destination, prompt_destination)
     output = dict(row)
     output.update(metadata)
     output.update({
         "nnunet_case_identifier": identifier,
         "full_ct_image": str(full_ct_path(row)),
+        "nnunet_ct_image": str(ct_destination),
+        "ct_export_mode": ct_export_mode,
         "prompt_image": str(prompt_destination),
         "hierarchical_label": str(label_destination),
         "nnunet_label_values": {"background": 0, "prompted_organ": 1, "prompted_tumor": 2},
