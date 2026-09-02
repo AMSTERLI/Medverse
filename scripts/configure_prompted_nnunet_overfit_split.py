@@ -12,9 +12,14 @@ def link(source: str | Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     source = Path(source).resolve()
     if destination.is_symlink() or destination.exists():
-        if destination.resolve() != source:
+        if destination.resolve() == source:
+            return
+        if destination.is_symlink():
+            # This directory is fully generated. Replace stale links left by a
+            # corrected export without touching any source image.
+            destination.unlink()
+        else:
             raise FileExistsError(f"{destination} already points to a different file")
-        return
     os.symlink(source, destination)
 
 
