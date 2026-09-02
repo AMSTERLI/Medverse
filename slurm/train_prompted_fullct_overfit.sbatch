@@ -36,3 +36,7 @@ python scripts/evaluate_liver_kidney_original_space.py \
   --manifest "${ROOT}/manifest.jsonl" --split train \
   --predictions "${ROOT}/predictions.jsonl" \
   --prediction-label-value 2 --output-dir "${ROOT}/metrics"
+python scripts/check_overfit_gate.py \
+  --metrics-csv "${ROOT}/metrics/per_case_metrics.csv" \
+  --gate "${PROJECT_DIR}/work/experiments/gates/no_icl_prompted_fullct_overfit.pass" \
+  --expected-cases 4
