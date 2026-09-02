@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, List, Tuple, Union
+from typing import List, Tuple, Union
 
 import numpy as np
 import torch
@@ -29,8 +29,15 @@ class RestoreScalarPromptTransform(ImageOnlyTransform):
 class nnUNetTrainerPromptedFullCT(nnUNetTrainer):
     """Full-CT trainer with stronger foreground sampling and an intact prompt."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        plans: dict,
+        configuration: str,
+        fold: int,
+        dataset_json: dict,
+        device: torch.device = torch.device("cuda"),
+    ):
+        super().__init__(plans, configuration, fold, dataset_json, device)
         self.oversample_foreground_percent = 0.66
 
     @staticmethod
@@ -63,12 +70,26 @@ class nnUNetTrainerPromptedFullCT(nnUNetTrainer):
 
 
 class nnUNetTrainerPromptedFullCT_50epochs(nnUNetTrainerPromptedFullCT):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        plans: dict,
+        configuration: str,
+        fold: int,
+        dataset_json: dict,
+        device: torch.device = torch.device("cuda"),
+    ):
+        super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 50
 
 
 class nnUNetTrainerPromptedFullCT_100epochs(nnUNetTrainerPromptedFullCT):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        plans: dict,
+        configuration: str,
+        fold: int,
+        dataset_json: dict,
+        device: torch.device = torch.device("cuda"),
+    ):
+        super().__init__(plans, configuration, fold, dataset_json, device)
         self.num_epochs = 100
