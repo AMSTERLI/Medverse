@@ -5,6 +5,14 @@ dataset_id: 502
 dataset_name: PromptedFullCT
 plans_identifier: nnUNetPlans_PromptedFullCT
 trainer: nnUNetTrainerPromptedFullCT_100epochs
+epochs: 100
+manifest: work/manifests/kits23_lits_mswal_liver_kidney_fixed.jsonl
+frozen_split:
+  train: 611
+  val: 87
+  test: 176
+  patient_level: true
+  test_usage: held_out_until_final_inference
 input_channels:
   - full_CT
   - scalar_task_prompt_liver_0_kidney_1
@@ -24,3 +32,4 @@ torch_compile: false
 gpu_slot: 0
 output_dir: work/experiments/no_icl_prompted_fullct
 formal_training_gate: overfit_2_to_4_cases_must_pass
+overfit_gate_result: passed
