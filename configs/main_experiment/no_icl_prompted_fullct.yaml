@@ -1,0 +1,26 @@
+name: no_icl_prompted_fullct_nnunet
+model: nnUNet_v2
+configuration: 3d_fullres
+dataset_id: 502
+dataset_name: PromptedFullCT
+plans_identifier: nnUNetPlans_PromptedFullCT
+trainer: nnUNetTrainerPromptedFullCT_100epochs
+input_channels:
+  - full_CT
+  - scalar_task_prompt_liver_0_kidney_1
+labels:
+  0: background
+  1: prompted_organ
+  2: prompted_tumor
+organ_supervision:
+  LiTS: native_semantic_label
+  KiTS23: native_semantic_label
+  MSWAL: TotalSegmentator_pseudo_label
+spatial_policy: full_CT_sliding_window_no_hard_ROI
+foreground_oversampling: 0.66
+context: disabled
+ccti: disabled
+torch_compile: false
+gpu_slot: 0
+output_dir: work/experiments/no_icl_prompted_fullct
+formal_training_gate: overfit_2_to_4_cases_must_pass

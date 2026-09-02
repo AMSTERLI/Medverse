@@ -86,13 +86,21 @@ def maximum_component_diameter(mask: np.ndarray, affine: np.ndarray) -> float:
     return maximum
 
 
-def evaluate_case(row: dict[str, Any], prediction_path: Path, tolerance_mm: float) -> dict[str, Any]:
+def evaluate_case(
+    row: dict[str, Any],
+    prediction_path: Path,
+    tolerance_mm: float,
+    prediction_label_values: tuple[int, ...] = (1,),
+) -> dict[str, Any]:
     truth_path = Path(row.get("tumor_mask", row.get("source_mask", row["mask"])))
     truth_nii, pred_nii = nib.load(truth_path), nib.load(prediction_path)
     if truth_nii.shape != pred_nii.shape or not np.allclose(truth_nii.affine, pred_nii.affine, atol=1e-3):
         raise ValueError(f"{row['case_id']}: prediction is not on original truth grid")
     truth = np.asarray(truth_nii.dataobj) > 0.5
-    prediction = np.asarray(pred_nii.dataobj) > 0.5
+    prediction = np.isin(
+        np.rint(np.asarray(pred_nii.dataobj)).astype(np.int16, copy=False),
+        prediction_label_values,
+    )
     metrics = voxel_metrics(prediction, truth, tuple(truth_nii.header.get_zooms()[:3]), tolerance_mm)
     metrics.update(lesion_metrics(prediction, truth))
     diameter = float(row.get("maximum_3d_diameter_mm", maximum_component_diameter(truth, truth_nii.affine)))
@@ -171,17 +179,41 @@ def main() -> None:
     parser.add_argument("--comparison-predictions", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--nsd-tolerance-mm", type=float, default=2.0)
+    parser.add_argument(
+        "--prediction-label-value",
+        type=int,
+        action="append",
+        dest="prediction_label_values",
+        help="Predicted semantic label to score as tumor; repeat for multiple labels. Default: 1.",
+    )
     parser.add_argument("--split", default="test")
     args = parser.parse_args()
     manifest = [row for row in load_jsonl(args.manifest) if row["split"] == args.split]
     predictions = prediction_lookup(args.predictions)
-    rows = [evaluate_case(row, predictions[row["case_id"]], args.nsd_tolerance_mm) for row in manifest]
+    prediction_label_values = tuple(args.prediction_label_values or [1])
+    rows = [
+        evaluate_case(
+            row,
+            predictions[row["case_id"]],
+            args.nsd_tolerance_mm,
+            prediction_label_values,
+        )
+        for row in manifest
+    ]
     args.output_dir.mkdir(parents=True, exist_ok=True)
     write_csv(args.output_dir / "per_case_metrics.csv", rows)
     report: dict[str, Any] = {"summary": summarize(rows), "nsd_tolerance_mm": args.nsd_tolerance_mm}
     if args.comparison_predictions:
         other = prediction_lookup(args.comparison_predictions)
-        other_rows = [evaluate_case(row, other[row["case_id"]], args.nsd_tolerance_mm) for row in manifest]
+        other_rows = [
+            evaluate_case(
+                row,
+                other[row["case_id"]],
+                args.nsd_tolerance_mm,
+                prediction_label_values,
+            )
+            for row in manifest
+        ]
         report["paired_comparison_primary_minus_comparison"] = paired_comparison(rows, other_rows)
     (args.output_dir / "metrics.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     write_markdown(args.output_dir / "paper_table.md", report["summary"])
