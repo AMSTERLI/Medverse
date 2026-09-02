@@ -17,6 +17,7 @@ FIXED_MANIFEST=${FIXED_MANIFEST:-${PROJECT_DIR}/work/manifests/kits23_lits_mswal
 NNUNET_STORAGE=${NNUNET_STORAGE:-${PROJECT_DIR}/work/experiments/nnunet_storage}
 ROOT=${PROJECT_DIR}/work/experiments/no_icl_prompted_fullct
 EXPORTED_MANIFEST=${ROOT}/manifest.jsonl
+REUSE_EXPORT=${REUSE_EXPORT:-0}
 DATASET_ID=502
 DATASET_NAME=PromptedFullCT
 DATASET=Dataset502_PromptedFullCT
@@ -34,14 +35,20 @@ export nnUNet_raw=${NNUNET_STORAGE}/nnUNet_raw
 export nnUNet_preprocessed=${NNUNET_STORAGE}/nnUNet_preprocessed
 export nnUNet_results=${ROOT}/checkpoints
 
-"${PYTHON}" scripts/export_prompted_fullct_nnunet_dataset.py \
-  --manifest "${FIXED_MANIFEST}" \
-  --nnunet-raw "${nnUNet_raw}" \
-  --nnunet-preprocessed "${nnUNet_preprocessed}" \
-  --output-manifest "${EXPORTED_MANIFEST}" \
-  --dataset-id "${DATASET_ID}" \
-  --dataset-name "${DATASET_NAME}" \
-  --workers 4
+if [[ "${REUSE_EXPORT}" == "1" ]]; then
+  test -f "${EXPORTED_MANIFEST}"
+  test -f "${nnUNet_raw}/${DATASET}/dataset.json"
+  test -f "${nnUNet_preprocessed}/${DATASET}/splits_final.json"
+else
+  "${PYTHON}" scripts/export_prompted_fullct_nnunet_dataset.py \
+    --manifest "${FIXED_MANIFEST}" \
+    --nnunet-raw "${nnUNet_raw}" \
+    --nnunet-preprocessed "${nnUNet_preprocessed}" \
+    --output-manifest "${EXPORTED_MANIFEST}" \
+    --dataset-id "${DATASET_ID}" \
+    --dataset-name "${DATASET_NAME}" \
+    --workers 4
+fi
 
 "${PYTHON}" scripts/check_prompted_fullct_formal_export.py \
   --manifest "${EXPORTED_MANIFEST}" \
