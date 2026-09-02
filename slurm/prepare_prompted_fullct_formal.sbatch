@@ -18,6 +18,8 @@ NNUNET_STORAGE=${NNUNET_STORAGE:-${PROJECT_DIR}/work/experiments/nnunet_storage}
 ROOT=${PROJECT_DIR}/work/experiments/no_icl_prompted_fullct
 EXPORTED_MANIFEST=${ROOT}/manifest.jsonl
 REUSE_EXPORT=${REUSE_EXPORT:-0}
+RESUME_PREPROCESSING=${RESUME_PREPROCESSING:-0}
+PREPROCESS_WORKERS=${PREPROCESS_WORKERS:-2}
 DATASET_ID=502
 DATASET_NAME=PromptedFullCT
 DATASET=Dataset502_PromptedFullCT
@@ -57,10 +59,20 @@ fi
   --expected-train 611 --expected-val 87 --expected-test 176
 
 "${PYTHON}" scripts/install_nnunet_prompted_fullct.py
-nnUNetv2_plan_and_preprocess -d "${DATASET_ID}" -c 3d_fullres -np 4 \
-  --verify_dataset_integrity \
-  -preprocessor_name PromptedFullCTPreprocessor \
-  -overwrite_plans_name nnUNetPlans_PromptedFullCT
+if [[ "${RESUME_PREPROCESSING}" == "1" ]]; then
+  "${PYTHON}" scripts/resume_prompted_fullct_preprocessing.py \
+    --dataset-id "${DATASET_ID}" \
+    --configuration 3d_fullres \
+    --plans-identifier nnUNetPlans_PromptedFullCT \
+    --workers "${PREPROCESS_WORKERS}" \
+    --retries 3
+else
+  nnUNetv2_plan_and_preprocess -d "${DATASET_ID}" -c 3d_fullres \
+    -np "${PREPROCESS_WORKERS}" \
+    --verify_dataset_integrity \
+    -preprocessor_name PromptedFullCTPreprocessor \
+    -overwrite_plans_name nnUNetPlans_PromptedFullCT
+fi
 
 "${PYTHON}" scripts/snapshot_nnunetv2_plan.py \
   --plans "${nnUNet_preprocessed}/${DATASET}/nnUNetPlans_PromptedFullCT.json" \
