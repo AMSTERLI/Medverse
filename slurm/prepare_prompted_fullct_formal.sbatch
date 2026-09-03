@@ -74,6 +74,11 @@ else
     -overwrite_plans_name nnUNetPlans_PromptedFullCT
 fi
 
+GT_DIR=${nnUNet_preprocessed}/${DATASET}/gt_segmentations
+if [[ ! -e "${GT_DIR}" ]]; then
+  ln -s "${nnUNet_raw}/${DATASET}/labelsTr" "${GT_DIR}"
+fi
+
 "${PYTHON}" scripts/snapshot_nnunetv2_plan.py \
   --plans "${nnUNet_preprocessed}/${DATASET}/nnUNetPlans_PromptedFullCT.json" \
   --fingerprint "${nnUNet_preprocessed}/${DATASET}/dataset_fingerprint.json" \

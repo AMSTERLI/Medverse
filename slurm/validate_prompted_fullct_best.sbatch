@@ -26,6 +26,11 @@ export nnUNet_preprocessed=${NNUNET_STORAGE}/nnUNet_preprocessed
 export nnUNet_results=${ROOT}/checkpoints
 export nnUNet_compile=False
 
+GT_DIR=${nnUNet_preprocessed}/Dataset502_PromptedFullCT/gt_segmentations
+if [[ ! -e "${GT_DIR}" ]]; then
+  ln -s "${nnUNet_raw}/Dataset502_PromptedFullCT/labelsTr" "${GT_DIR}"
+fi
+
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader \
   > "${ROOT}/gpu_validation_${SLURM_JOB_ID}.txt"
 python scripts/install_nnunet_prompted_fullct.py
